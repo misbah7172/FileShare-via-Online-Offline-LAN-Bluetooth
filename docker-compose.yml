@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Main application server
+  app:
+    build: ./server
+    container_name: fileshare-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key}
+    networks:
+      - fileshare-network
+    volumes:
+      - ./client/build:/app/public
+    depends_on:
+      - caddy
+
+  # Reverse proxy with automatic HTTPS
+  caddy:
+    image: caddy:2-alpine
+    container_name: fileshare-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - EMAIL=${EMAIL:-admin@localhost}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./client/build:/srv
+    networks:
+      - fileshare-network
+
+networks:
+  fileshare-network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

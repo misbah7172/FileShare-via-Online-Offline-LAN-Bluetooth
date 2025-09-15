@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTP Server Network Access Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            color: white;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card p, .card li {
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+
+        .card ul {
+            margin-left: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .url-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            word-break: break-all;
+        }
+
+        .current-info {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .current-info strong {
+            color: #22c55e;
+        }
+
+        .btn {
+            background: #22c55e;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-right: 1rem;
+            margin-bottom: 1rem;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #16a34a;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .step {
+            margin-bottom: 1.5rem;
+            padding-left: 2rem;
+            position: relative;
+        }
+
+        .step::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #22c55e;
+            color: white;
+            border-radius: 50%;
+            width: 1.5rem;
+            height: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .card {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 FTP Server Network Access</h1>
+            <p>How to access the FileShare FTP server from other devices</p>
+        </div>
+
+        <div class="card">
+            <h2>🌐 Current Server Information</h2>
+            <div class="current-info">
+                <p><strong>Your current connection:</strong> <span id="currentURL"></span></p>
+                <p><strong>Server IP:</strong> <span id="serverIP"></span></p>
+                <p><strong>FTP Port:</strong> 3003</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📱 For Other Devices on This Network</h2>
+            <p>Share these URLs with other devices on the same WiFi/network:</p>
+            
+            <div class="step" data-step="1">
+                <strong>Direct FTP Interface:</strong>
+                <div class="url-box" id="networkFTPURL"></div>
+            </div>
+
+            <div class="step" data-step="2">
+                <strong>Main FileShare App:</strong>
+                <div class="url-box" id="networkMainURL"></div>
+                <p>Then click "FTP Server" toggle in the header</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🔧 Troubleshooting</h2>
+            
+            <div class="step" data-step="1">
+                <strong>Can't connect from other devices?</strong>
+                <ul>
+                    <li>Make sure all devices are on the same WiFi network</li>
+                    <li>Check if firewall is blocking port 3003</li>
+                    <li>Try disabling antivirus/firewall temporarily</li>
+                </ul>
+            </div>
+
+            <div class="step" data-step="2">
+                <strong>Can't create or join rooms?</strong>
+                <ul>
+                    <li>Make sure the server is running</li>
+                    <li>Check browser console for errors (F12)</li>
+                    <li>Try refreshing the page</li>
+                </ul>
+            </div>
+
+            <div class="step" data-step="3">
+                <strong>Files won't upload?</strong>
+                <ul>
+                    <li>Check file size (max 100MB per file)</li>
+                    <li>Ensure room password is correct</li>
+                    <li>Try using a different browser</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>💡 Quick Access Links</h2>
+            <a href="/ftp" class="btn">🏠 FTP Home</a>
+            <a href="/" class="btn btn-secondary">📱 Main App</a>
+            <button onclick="copyNetworkURL()" class="btn btn-secondary">📋 Copy Network URL</button>
+        </div>
+    </div>
+
+    <script>
+        // Get current URL info
+        const currentURL = window.location.href;
+        const serverIP = window.location.hostname;
+        const networkFTPURL = `http://${serverIP}:3003/ftp`;
+        const networkMainURL = `http://${serverIP}:3000`;
+
+        // Update page content
+        document.getElementById('currentURL').textContent = currentURL;
+        document.getElementById('serverIP').textContent = serverIP;
+        document.getElementById('networkFTPURL').textContent = networkFTPURL;
+        document.getElementById('networkMainURL').textContent = networkMainURL;
+
+        // Copy network URL function
+        function copyNetworkURL() {
+            navigator.clipboard.writeText(networkFTPURL).then(() => {
+                alert('Network FTP URL copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = networkFTPURL;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Network FTP URL copied to clipboard!');
+            });
+        }
+
+        // Auto-detect if accessing from network
+        if (serverIP !== 'localhost' && serverIP !== '127.0.0.1') {
+            document.querySelector('.current-info').innerHTML += 
+                '<p><strong style="color: #22c55e;">✅ You are accessing from the network! This URL should work on other devices too.</strong></p>';
+        } else {
+            document.querySelector('.current-info').innerHTML += 
+                '<p><strong style="color: #fbbf24;">⚠️ You are accessing via localhost. Other devices need to use the network IP instead.</strong></p>';
+        }
+    </script>
+</body>
+</html>

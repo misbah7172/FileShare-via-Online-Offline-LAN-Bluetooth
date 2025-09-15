@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket Test</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Socket Connection Test</h1>
+    <button id="connectBtn">Connect to Server</button>
+    <button id="testBtn">Test Connection</button>
+    <button id="createRoomBtn">Create Room</button>
+    <div id="status"></div>
+    <div id="logs"></div>
+
+    <script>
+        let socket = null;
+        const status = document.getElementById('status');
+        const logs = document.getElementById('logs');
+
+        function log(message) {
+            console.log(message);
+            logs.innerHTML += '<div>' + message + '</div>';
+        }
+
+        document.getElementById('connectBtn').onclick = function() {
+            log('🔌 Connecting to server...');
+            socket = io('http://localhost:3001');
+            
+            socket.on('connect', () => {
+                log('✅ Connected! Socket ID: ' + socket.id);
+                status.innerHTML = 'Connected';
+            });
+
+            socket.on('disconnect', () => {
+                log('❌ Disconnected');
+                status.innerHTML = 'Disconnected';
+            });
+
+            socket.on('test-response', (data) => {
+                log('🧪 Test response: ' + JSON.stringify(data));
+            });
+
+            socket.on('room-created', (data) => {
+                log('🏠 Room created: ' + JSON.stringify(data));
+            });
+        };
+
+        document.getElementById('testBtn').onclick = function() {
+            if (socket) {
+                log('🧪 Sending test message...');
+                socket.emit('test-connection', { message: 'Hello from test page!' });
+            } else {
+                log('❌ No socket connection');
+            }
+        };
+
+        document.getElementById('createRoomBtn').onclick = function() {
+            if (socket) {
+                log('🏠 Creating room...');
+                socket.emit('create-room', { password: null });
+            } else {
+                log('❌ No socket connection');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "fileshare-p2p",
+  "version": "1.0.0",
+  "description": "Real-time peer-to-peer file sharing platform",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": [
+    "p2p",
+    "file-sharing",
+    "webrtc",
+    "real-time",
+    "encryption",
+    "browser"
+  ],
+  "author": "FileShare Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

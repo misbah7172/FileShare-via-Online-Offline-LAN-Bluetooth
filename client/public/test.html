@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket Test</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Socket Connection Test</h1>
+    <button id="connectBtn">Connect to Server</button>
+    <button id="testBtn">Test Connection</button>
+    <button id="createRoomBtn">Create Room</button>
+    <div id="status"></div>
+    <div id="logs"></div>
+
+    <script>
+        let socket = null;
+        const status = document.getElementById('status');
+        const logs = document.getElementById('logs');
+
+        function log(message) {
+            console.log(message);
+            logs.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            log('🔌 Auto-connecting to server...');
+            socket = io('http://localhost:3001');
+            
+            socket.on('connect', () => {
+                log('✅ Connected! Socket ID: ' + socket.id);
+                status.innerHTML = '<span style="color: green;">Connected: ' + socket.id + '</span>';
+            });
+
+            socket.on('disconnect', () => {
+                log('❌ Disconnected');
+                status.innerHTML = '<span style="color: red;">Disconnected</span>';
+            });
+
+            socket.on('connect_error', (error) => {
+                log('🚫 Connection error: ' + error);
+            });
+
+            socket.on('test-response', (data) => {
+                log('🧪 Test response: ' + JSON.stringify(data));
+            });
+
+            socket.on('room-created', (data) => {
+                log('🏠 Room created: ' + JSON.stringify(data));
+            });
+        };
+
+        document.getElementById('connectBtn').onclick = function() {
+            if (socket) {
+                socket.disconnect();
+            }
+            log('🔌 Manually connecting to server...');
+            socket = io('http://localhost:3001');
+        };
+
+        document.getElementById('testBtn').onclick = function() {
+            if (socket && socket.connected) {
+                log('🧪 Sending test message...');
+                socket.emit('test-connection', { message: 'Hello from test page!' });
+            } else {
+                log('❌ No socket connection or not connected');
+            }
+        };
+
+        document.getElementById('createRoomBtn').onclick = function() {
+            if (socket && socket.connected) {
+                log('🏠 Creating room...');
+                socket.emit('create-room', { password: null });
+            } else {
+                log('❌ No socket connection or not connected');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTP Server Test - Offline Mode</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .test-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 3rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+
+        .test-container h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .test-container p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 2rem;
+        }
+
+        .status {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            color: #22c55e;
+            font-weight: 600;
+        }
+
+        .features {
+            text-align: left;
+            margin-top: 2rem;
+        }
+
+        .features h3 {
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .features ul {
+            list-style: none;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .features li {
+            margin-bottom: 0.5rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .features li::before {
+            content: "✅";
+            position: absolute;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>📁 FTP Server Mode</h1>
+        <p>FileShare's offline file transfer system is working perfectly!</p>
+        
+        <div class="status">
+            ✅ Offline CSS Loading Successfully
+        </div>
+
+        <div class="features">
+            <h3>Key Features:</h3>
+            <ul>
+                <li>No internet connection required</li>
+                <li>Room-based file sharing</li>
+                <li>Password protection support</li>
+                <li>Drag & drop file uploads</li>
+                <li>Cross-platform compatibility</li>
+                <li>Self-contained operation</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

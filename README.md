@@ -1,20 +1,52 @@
 # FileShare - Real-Time P2P File Transfer Platform
 
-A secure, browser-based peer-to-peer file sharing platform that enables real-time file transfers without user accounts or installations.
+A secure, browser-based peer-to-peer file sharing platform with **online hosting** and **offline LAN** capabilities.
 
-##  Features
+## 🌟 Features
 
-- **Real-Time P2P Transfer**: Direct peer-to-peer file sharing using WebRTC
-- **End-to-End Encryption**: All transfers are encrypted between peers
-- **No Installation Required**: Works entirely in the browser
-- **Cross-Platform**: Desktop and mobile support
-- **Room-Based Sharing**: Create rooms with unique links and optional passwords
-- **Multiple Transfer Modes**: One-to-one and one-to-many file sharing
-- **File Chunking**: Large file support with resume capability
-- **QR Code Sharing**: Easy mobile device connection
-- **Self-Hostable**: Docker deployment with HTTPS support
+- **🌐 Online Mode**: Host on Render for internet file sharing
+- **🏠 LAN Mode**: Offline local network file sharing  
+- **📂 FTP Server Mode**: Network file server with web interface
+- **🔒 End-to-End Encryption**: WebRTC encrypted transfers
+- **📱 Cross-Platform**: Works on desktop and mobile
+- **🏢 Room-Based**: Secure rooms with passwords
+- **📊 Real-Time**: Live transfer progress tracking
 
-##  Architecture
+## 🚀 Quick Start
+
+### For Internet File Sharing (Recommended)
+
+**Deploy to Render** for a publicly accessible service:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+1. Fork this repository
+2. Connect to Render and deploy
+3. Set environment variables (see [DEPLOYMENT.md](DEPLOYMENT.md))
+4. Access your hosted file sharing service
+
+### For LAN/FTP Features
+
+**Run locally** to access all features:
+
+```bash
+git clone https://github.com/misbah7172/FileShare-via-Online-Offline-LAN-.git
+cd FileShare-via-Online-Offline-LAN-
+npm run install:all
+npm run dev
+```
+
+Visit http://localhost:3000 to access all modes.
+
+## 📖 Complete Setup Guide
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for:
+- ✅ Detailed Render deployment instructions
+- ✅ Local setup for LAN and FTP modes
+- ✅ Environment configuration
+- ✅ Troubleshooting guide
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐

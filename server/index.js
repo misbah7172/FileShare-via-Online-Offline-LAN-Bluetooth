@@ -23,11 +23,13 @@ const ftpServer = new FTPServer();
 
 // Configure CORS
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "http://192.168.200.1:3000",
-    process.env.CORS_ORIGIN
-  ].filter(Boolean),
+  origin: process.env.NODE_ENV === 'production' 
+    ? [process.env.CORS_ORIGIN, process.env.RENDER_EXTERNAL_URL].filter(Boolean)
+    : [
+        "http://localhost:3000",
+        "http://192.168.200.1:3000",
+        process.env.CORS_ORIGIN
+      ].filter(Boolean),
   credentials: true
 };
 
@@ -39,6 +41,8 @@ app.use(express.json());
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
+  // Serve the React build files
+  app.use(express.static(path.join(__dirname, '../client/build')));
   app.use(express.static(path.join(__dirname, 'public')));
 }
 
@@ -516,7 +520,7 @@ app.get('/api/room/:roomId', (req, res) => {
 // Serve React app in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/index.html'));
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
   });
 }
 

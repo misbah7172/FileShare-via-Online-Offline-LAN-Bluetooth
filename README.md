@@ -2,7 +2,7 @@
 
 A secure, browser-based peer-to-peer file sharing platform that enables real-time file transfers without user accounts or installations.
 
-## 🚀 Features
+##  Features
 
 - **Real-Time P2P Transfer**: Direct peer-to-peer file sharing using WebRTC
 - **End-to-End Encryption**: All transfers are encrypted between peers
@@ -14,7 +14,7 @@ A secure, browser-based peer-to-peer file sharing platform that enables real-tim
 - **QR Code Sharing**: Easy mobile device connection
 - **Self-Hostable**: Docker deployment with HTTPS support
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -26,14 +26,14 @@ A secure, browser-based peer-to-peer file sharing platform that enables real-tim
          └──────────────── WebRTC P2P ───────────────────┘
 ```
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 - **Frontend**: React, TypeScript, WebRTC, Socket.io-client
 - **Backend**: Node.js, Socket.io, Express
 - **Deployment**: Docker, Docker Compose, Caddy (HTTPS)
 - **Encryption**: Built-in WebRTC DTLS/SRTP
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Development
 
@@ -52,7 +52,7 @@ npm run dev
 docker-compose up -d
 ```
 
-## 📝 Environment Variables
+##  Environment Variables
 
 ```env
 # Server Configuration
@@ -65,14 +65,14 @@ DOMAIN=your-domain.com
 EMAIL=your-email@domain.com
 ```
 
-## 🔧 Self-Hosting
+##  Self-Hosting
 
 1. Clone this repository
 2. Copy `.env.example` to `.env` and configure your domain
 3. Run `docker-compose up -d`
 4. Your instance will be available at `https://your-domain.com`
 
-## 🛡️ Security
+##  Security
 
 - End-to-end encryption via WebRTC DTLS
 - Optional room passwords
@@ -80,19 +80,19 @@ EMAIL=your-email@domain.com
 - HTTPS-only in production
 - Secure random room ID generation
 
-## 📱 Mobile Support
+##  Mobile Support
 
 - Responsive design for mobile devices
 - QR code generation for easy room sharing
 - Touch-friendly drag-and-drop interface
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
 4. Submit a pull request
 
-## 📄 License
+##  License
 
 MIT License - see LICENSE file for details

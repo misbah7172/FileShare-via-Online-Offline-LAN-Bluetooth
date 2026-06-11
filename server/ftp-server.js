@@ -602,18 +602,18 @@ class FTPServer {
             <p>Offline File Transfer System - No Internet Required</p>
         </div>
 
-        \${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
+        ${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
     </div>
 
     <script>
-        \${this.generateJavaScript(roomId)}
+        ${this.generateJavaScript(roomId)}
     </script>
 </body>
-</html>\`;
+</html>`;
   }
 
   generateMainInterface() {
-    return \`
+    return `
         <div class="card">
             <h2>Create New FTP Room</h2>
             <form id="createRoomForm">
@@ -645,13 +645,13 @@ class FTPServer {
         </div>
 
         <div id="statusMessage"></div>
-    \`;
+    `;
   }
 
   generateRoomInterface(roomId) {
-    return \`
+    return `
         <div class="card">
-            <h2>FTP Room: \${roomId}</h2>
+            <h2>FTP Room: ${roomId}</h2>
             <div id="roomInfo"></div>
             
             <div class="upload-area" id="uploadArea">
@@ -669,18 +669,18 @@ class FTPServer {
         </div>
 
         <div id="statusMessage"></div>
-    \`;
+    `;
   }
 
   generateJavaScript(roomId) {
-    return \`
+    return `
         const API_BASE = window.location.origin;
-        let currentRoomId = '\${roomId || ''}';
+        let currentRoomId = '${roomId || ''}';
         let currentPassword = '';
 
         function showStatus(message, type = 'success') {
             const statusDiv = document.getElementById('statusMessage');
-            statusDiv.innerHTML = \\\`<div class="status \\\${type}">\\\${message}</div>\\\`;
+            statusDiv.innerHTML = \`<div class="status \${type}">\${message}</div>\`;
             setTimeout(() => statusDiv.innerHTML = '', 5000);
         }
 
@@ -692,12 +692,12 @@ class FTPServer {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        \${roomId ? this.generateRoomJavaScript() : this.generateMainJavaScript()}
-    \`;
+        ${roomId ? this.generateRoomJavaScript() : this.generateMainJavaScript()}
+    `;
   }
 
   generateMainJavaScript() {
-    return \`
+    return `
         document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -705,7 +705,7 @@ class FTPServer {
             const password = document.getElementById('roomPassword').value;
             
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/create-room\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/create-room\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomName, password })
@@ -714,9 +714,9 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    showStatus(\\\`Room created successfully! Room ID: \\\${data.roomId}\\\`);
+                    showStatus(\`Room created successfully! Room ID: \${data.roomId}\`);
                     setTimeout(() => {
-                        window.location.href = \\\`\\\${API_BASE}/ftp/\\\${data.roomId}\\\`;
+                        window.location.href = \`\${API_BASE}/ftp/\${data.roomId}\`;
                     }, 2000);
                 } else {
                     showStatus(data.message, 'error');
@@ -738,7 +738,7 @@ class FTPServer {
             }
             
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/join/\\\${roomId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${roomId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
@@ -748,7 +748,7 @@ class FTPServer {
                 
                 if (data.success) {
                     showStatus('Joining room...');
-                    window.location.href = \\\`\\\${API_BASE}/ftp/\\\${roomId}\\\`;
+                    window.location.href = \`\${API_BASE}/ftp/\${roomId}\`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -761,11 +761,11 @@ class FTPServer {
         document.getElementById('joinRoomId').addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase();
         });
-    \`;
+    `;
   }
 
   generateRoomJavaScript() {
-    return \`
+    return `
         // Get password from user when page loads
         if (currentRoomId) {
             const password = prompt('Enter room password (leave blank if no password):') || '';
@@ -776,7 +776,7 @@ class FTPServer {
 
         async function loadRoomInfo() {
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/join/\\\${currentRoomId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${currentRoomId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -785,11 +785,11 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('roomInfo').innerHTML = \\\`
-                        <p><strong>Room:</strong> \\\${data.room.name}</p>
-                        <p><strong>Files:</strong> \\\${data.room.fileCount}</p>
-                        <p><strong>Created:</strong> \\\${new Date(data.room.createdAt).toLocaleString()}</p>
-                    \\\`;
+                    document.getElementById('roomInfo').innerHTML = \`
+                        <p><strong>Room:</strong> \${data.room.name}</p>
+                        <p><strong>Files:</strong> \${data.room.fileCount}</p>
+                        <p><strong>Created:</strong> \${new Date(data.room.createdAt).toLocaleString()}</p>
+                    \`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -800,7 +800,7 @@ class FTPServer {
 
         async function loadFiles() {
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/files/\\\${currentRoomId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/files/\${currentRoomId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -816,26 +816,26 @@ class FTPServer {
                         return;
                     }
                     
-                    filesDiv.innerHTML = \\\`
+                    filesDiv.innerHTML = \`
                         <div class="file-grid">
-                            \\\${data.files.map(file => \\\`
+                            \${data.files.map(file => \`
                                 <div class="file-card">
                                     <div class="file-info">
-                                        <h3>\\\${file.name}</h3>
+                                        <h3>\${file.name}</h3>
                                         <div class="file-meta">
-                                            <p>Size: \\\${formatFileSize(file.size)}</p>
-                                            <p>Type: \\\${file.type}</p>
-                                            <p>Uploaded: \\\${new Date(file.uploadedAt).toLocaleString()}</p>
+                                            <p>Size: \${formatFileSize(file.size)}</p>
+                                            <p>Type: \${file.type}</p>
+                                            <p>Uploaded: \${new Date(file.uploadedAt).toLocaleString()}</p>
                                         </div>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="btn" onclick="downloadFile('\\\${file.id}', '\\\${file.name}')">📥 Download</button>
-                                        <button class="btn btn-danger" onclick="deleteFile('\\\${file.id}', '\\\${file.name}')">🗑️ Delete</button>
+                                        <button class="btn" onclick="downloadFile('\${file.id}', '\${file.name}')">📥 Download</button>
+                                        <button class="btn btn-danger" onclick="deleteFile('\${file.id}', '\${file.name}')">🗑️ Delete</button>
                                     </div>
                                 </div>
-                            \\\`).join('')}
+                            \`).join('')}
                         </div>
-                    \\\`;
+                    \`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -851,7 +851,7 @@ class FTPServer {
 
         async function downloadFile(fileId, fileName) {
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/download/\\\${currentRoomId}/\\\${fileId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/download/\${currentRoomId}/\${fileId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -865,7 +865,7 @@ class FTPServer {
                     a.download = fileName;
                     a.click();
                     window.URL.revokeObjectURL(url);
-                    showStatus(\\\`Downloading \\\${fileName}\\\`);
+                    showStatus(\`Downloading \${fileName}\`);
                 } else {
                     const data = await response.json();
                     showStatus(data.message, 'error');
@@ -876,12 +876,12 @@ class FTPServer {
         }
 
         async function deleteFile(fileId, fileName) {
-            if (!confirm(\\\`Are you sure you want to delete "\\\${fileName}"?\\\`)) {
+            if (!confirm(\`Are you sure you want to delete "\${fileName}"?\`)) {
                 return;
             }
             
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/delete/\\\${currentRoomId}/\\\${fileId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/delete/\${currentRoomId}/\${fileId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -890,7 +890,7 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    showStatus(\\\`File "\\\${fileName}" deleted successfully\\\`);
+                    showStatus(\`File "\${fileName}" deleted successfully\`);
                     loadFiles();
                 } else {
                     showStatus(data.message, 'error');
@@ -938,7 +938,7 @@ class FTPServer {
             formData.append('password', currentPassword);
             
             try {
-                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/upload/\\\${currentRoomId}\\\`, {
+                const response = await fetch(\`\${API_BASE}/api/ftp/upload/\${currentRoomId}\`, {
                     method: 'POST',
                     body: formData
                 });
@@ -946,20 +946,20 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    statusDiv.innerHTML = \\\`<div class="status success">\\\${data.message}</div>\\\`;
+                    statusDiv.innerHTML = \`<div class="status success">\${data.message}</div>\`;
                     loadFiles();
                     loadRoomInfo();
                     fileInput.value = '';
                 } else {
-                    statusDiv.innerHTML = \\\`<div class="status error">\\\${data.message}</div>\\\`;
+                    statusDiv.innerHTML = \`<div class="status error">\${data.message}</div>\`;
                 }
             } catch (error) {
-                statusDiv.innerHTML = \\\`<div class="status error">Upload failed: \\\${error.message}</div>\\\`;
+                statusDiv.innerHTML = \`<div class="status error">Upload failed: \${error.message}</div>\`;
             }
             
             setTimeout(() => statusDiv.innerHTML = '', 5000);
         }
-    \`;
+    `;
   }
 
   cleanupOldRooms() {
@@ -974,7 +974,7 @@ class FTPServer {
         }
         
         this.activeRooms.delete(roomId);
-        console.log(`🧹 Cleaned up old FTP room: \${roomId}`);
+        console.log(`🧹 Cleaned up old FTP room: ${roomId}`);
       }
     }
   }

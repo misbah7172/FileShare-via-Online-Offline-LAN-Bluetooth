@@ -26,6 +26,14 @@ const FTPMode = () => {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showJoinRoom, setShowJoinRoom] = useState(false);
   const [message, setMessage] = useState(null);
+
+  // Create room form state
+  const [newRoomName, setNewRoomName] = useState('');
+  const [newRoomPassword, setNewRoomPassword] = useState('');
+
+  // Join room form state
+  const [joinRoomId, setJoinRoomId] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
   
   const userId = React.useMemo(() => Math.random().toString(36).substring(7), []);
   const [userName, setUserName] = useState('User_' + userId.substring(0, 3));
@@ -90,6 +98,38 @@ const FTPMode = () => {
   useEffect(() => {
     loadServerStatus();
   }, [loadServerStatus]);
+
+  const createRoom = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/ftp/create-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomName: newRoomName || undefined,
+          password: newRoomPassword || undefined
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showMessage(`Room created! Room ID: ${data.roomId}`);
+        setShowCreateRoom(false);
+        setNewRoomName('');
+        setNewRoomPassword('');
+        loadServerStatus();
+        setTimeout(() => {
+          joinRoom(data.roomId, newRoomPassword);
+        }, 1000);
+      } else {
+        showMessage(data.message, 'error');
+      }
+    } catch (error) {
+      showMessage('Failed to create room: ' + error.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const sendMessage = async (e) => {
     e.preventDefault();

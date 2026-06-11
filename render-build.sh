@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit on any error
+set -e
+
 # Pre-deployment script for Render
 echo "🚀 Starting Render deployment preparation..."
 

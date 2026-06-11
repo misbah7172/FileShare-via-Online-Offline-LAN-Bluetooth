@@ -315,12 +315,34 @@ class PeerConnection {
         case 'files-list':
           this.handleFilesList(message);
           break;
+        case 'text-share':
+          this.handleTextShare(message);
+          break;
         default:
           console.warn('Unknown message type:', message.type);
       }
     } catch (error) {
       console.error('Error parsing data channel message:', error);
     }
+  }
+
+  // Text sharing methods
+  sendTextMessage(text, messageId) {
+    if (!this.connected || !this.dataChannel) {
+      return false;
+    }
+
+    return this.sendDataChannelMessage({
+      type: 'text-share',
+      messageId: messageId,
+      text: text,
+      timestamp: Date.now()
+    });
+  }
+
+  handleTextShare(message) {
+    console.log('💬 Received text share from', this.remoteUserId);
+    this.onTextMessage?.(message);
   }
 
   // File transfer methods
@@ -684,6 +706,7 @@ class PeerConnection {
   onFileError = null;
   onGetAvailableFiles = null; // Function to get available files from UI
   onRemoteFilesReceived = null; // Function called when remote peer shares their files list
+  onTextMessage = null;
 
   close() {
     if (this.dataChannel) {
@@ -802,6 +825,7 @@ export class WebRTCManager {
       peer.onFileError = (transferId, error) => this.onFileError?.(userId, transferId, error);
       peer.onGetAvailableFiles = () => this.onGetAvailableFiles?.();
       peer.onRemoteFilesReceived = (remoteUserId, files) => this.onRemoteFilesReceived?.(remoteUserId, files);
+      peer.onTextMessage = (message) => this.onTextMessage?.(userId, message);
       
       this.peers.set(userId, peer);
     }
@@ -831,6 +855,29 @@ export class WebRTCManager {
       this.peers.delete(userId);
       this.onPeerDisconnected?.(userId);
     }
+  }
+
+  async sendTextMessageToUser(userId, text, messageId) {
+    const peer = this.peers.get(userId);
+    if (!peer || !peer.connected) {
+      throw new Error('Peer not connected');
+    }
+    
+    return peer.sendTextMessage(text, messageId);
+  }
+
+  async sendTextMessageToAll(text, messageId) {
+    let sentCount = 0;
+    
+    for (const [userId, peer] of this.peers) {
+      if (peer.connected) {
+        if (peer.sendTextMessage(text, messageId)) {
+          sentCount++;
+        }
+      }
+    }
+    
+    return sentCount > 0;
   }
 
   async sendFileToUser(userId, file, transferId) {

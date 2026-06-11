@@ -13,6 +13,7 @@ import QRCodeDisplay from './QRCodeDisplay';
 import FileTransfer from './FileTransfer';
 import UserList from './UserList';
 import ConnectionStatus from './ConnectionStatus';
+import TextShare from './TextShare';
 import WebRTCManager from '../services/webrtc';
 import { copyToClipboard, generateTransferId } from '../services/utils';
 
@@ -41,6 +42,7 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
   const [showQR, setShowQR] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [sharedFiles, setSharedFiles] = useState([]); // Centralized shared files list
+  const [sharedMessages, setSharedMessages] = useState([]); // Shared text messages
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [error, setError] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -87,6 +89,17 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
       } catch (error) {
         console.error('Error loading saved transfers:', error);
         localStorage.removeItem(storageKey);
+      }
+    }
+
+    // Load existing messages from localStorage
+    const messagesKey = `sharedMessages_${roomData.roomId}`;
+    const savedMessages = localStorage.getItem(messagesKey);
+    if (savedMessages) {
+      try {
+        setSharedMessages(JSON.parse(savedMessages));
+      } catch (error) {
+        console.error('Error loading saved messages:', error);
       }
     }
 
@@ -357,6 +370,24 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
         });
       });
     };
+
+    webrtc.onTextMessage = (userId, message) => {
+      console.log('📥 Text message received from', userId);
+      const newMessage = {
+        id: message.messageId,
+        fromUserId: userId,
+        text: message.text,
+        timestamp: message.timestamp
+      };
+      
+      setSharedMessages(prev => {
+        // Prevent duplicate messages
+        if (prev.find(m => m.id === newMessage.id)) return prev;
+        const updated = [...prev, newMessage].slice(-50); // Keep last 50 messages
+        localStorage.setItem(`sharedMessages_${roomData.roomId}`, JSON.stringify(updated));
+        return updated;
+      });
+    };
   };
 
   const setupSocketHandlers = () => {
@@ -486,6 +517,30 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
     }
   };
 
+  const handleSendMessage = (text) => {
+    if (!webrtcRef.current || connectedCount === 0) return;
+
+    const messageId = generateTransferId();
+    const timestamp = Date.now();
+    
+    // Add to our own message list
+    const newMessage = {
+      id: messageId,
+      fromUserId: currentUser?.userId,
+      text: text,
+      timestamp: timestamp
+    };
+
+    setSharedMessages(prev => {
+      const updated = [...prev, newMessage].slice(-50);
+      localStorage.setItem(`sharedMessages_${roomData.roomId}`, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Send to all peers
+    webrtcRef.current.sendTextMessageToAll(text, messageId);
+  };
+
   const acceptFileTransfer = (transferId) => {
     const transfer = sharedFiles.find(t => t.id === transferId);
     if (transfer && webrtcRef.current) {
@@ -520,7 +575,7 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
       id: file.id,
       fileName: file.fileName,
       fileSize: file.fileSize,
-      fileType: file.fileType,
+      fileType: file.type,
       timestamp: file.timestamp,
       fromUserId: file.fromUserId
     }));
@@ -633,38 +688,49 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
         </div>
         
         <div className="right-panel">
-          <div className="file-actions">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
+          <div className="main-actions">
+            <div className="file-actions">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+              
+              <button
+                className="btn btn-primary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={connectedCount === 0}
+              >
+                <Upload size={16} />
+                Send Files
+              </button>
+              
+              {connectedCount === 0 && (
+                <p className="text-muted text-center mt-2">
+                  Waiting for other users to connect...
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="sharing-grid">
+            <TextShare 
+              messages={sharedMessages}
+              onSendMessage={handleSendMessage}
+              users={users}
+              currentUser={currentUser}
             />
             
-            <button
-              className="btn btn-primary"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={connectedCount === 0}
-            >
-              <Upload size={16} />
-              Send Files
-            </button>
-            
-            {connectedCount === 0 && (
-              <p className="text-muted text-center mt-2">
-                Waiting for other users to connect...
-              </p>
-            )}
+            <FileTransfer
+              transfers={displayTransfers}
+              onAccept={acceptFileTransfer}
+              onReject={rejectFileTransfer}
+              onRemove={removeTransfer}
+              users={users}
+            />
           </div>
-          
-          <FileTransfer
-            transfers={displayTransfers}
-            onAccept={acceptFileTransfer}
-            onReject={rejectFileTransfer}
-            onRemove={removeTransfer}
-            users={users}
-          />
         </div>
       </div>
 
@@ -772,6 +838,16 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
           border-radius: 12px;
           padding: 1.5rem;
           border: 1px solid rgba(255, 255, 255, 0.2);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .sharing-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.5rem;
+          align-items: start;
         }
 
         .modal-overlay {
@@ -812,6 +888,12 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
           gap: 1rem;
           justify-content: flex-end;
           margin-top: 1rem;
+        }
+
+        @media (max-width: 1024px) {
+          .sharing-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 768px) {

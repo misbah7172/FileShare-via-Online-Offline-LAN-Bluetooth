@@ -43,6 +43,7 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [sharedFiles, setSharedFiles] = useState([]); // Centralized shared files list
   const [sharedMessages, setSharedMessages] = useState([]); // Shared text messages
+  const [inputText, setInputText] = useState(''); // Text sharing input
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [peerStates, setPeerStates] = useState({}); // userId -> connectionState
   const [peerIceStates, setPeerIceStates] = useState({}); // userId -> iceConnectionState

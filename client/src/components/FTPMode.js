@@ -19,26 +19,23 @@ const FTPMode = () => {
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [files, setFiles] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [chatText, setChatText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showJoinRoom, setShowJoinRoom] = useState(false);
   const [message, setMessage] = useState(null);
+  
+  const userId = React.useMemo(() => Math.random().toString(36).substring(7), []);
+  const [userName, setUserName] = useState('User_' + userId.substring(0, 3));
 
-  // Create room form state
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomPassword, setNewRoomPassword] = useState('');
-
-  // Join room form state
-  const [joinRoomId, setJoinRoomId] = useState('');
-  const [joinPassword, setJoinPassword] = useState('');
-
-  // Determine API base URL - use current origin if in production/Render
+  // Determine API base URL
   const getAPIBase = () => {
     const hostname = window.location.hostname;
     if (process.env.NODE_ENV === 'production' || hostname.includes('render.com')) {
       return window.location.origin;
     }
-    // In dev, use the main server port (integrated)
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:3001';
     }
@@ -52,14 +49,39 @@ const FTPMode = () => {
     setTimeout(() => setMessage(null), 5000);
   }, []);
 
+  const refreshRoomData = useCallback(async () => {
+    if (!currentRoom) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/ftp/heartbeat/${currentRoom.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, userName })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMembers(data.members || []);
+        setFiles(data.files || []);
+        setMessages(data.messages || []);
+      }
+    } catch (error) {
+      console.error('Heartbeat failed:', error);
+    }
+  }, [API_BASE, currentRoom, userId, userName]);
+
+  // Auto-refresh every 1s
+  useEffect(() => {
+    let interval;
+    if (currentRoom) {
+      interval = setInterval(refreshRoomData, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [currentRoom, refreshRoomData]);
+
   const loadServerStatus = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/ftp/status`);
       const data = await response.json();
-      
-      if (data.success) {
-        setRooms(data.rooms);
-      }
+      if (data.success) setRooms(data.rooms);
     } catch (error) {
       console.error('Failed to load server status:', error);
     }
@@ -69,70 +91,42 @@ const FTPMode = () => {
     loadServerStatus();
   }, [loadServerStatus]);
 
-  const createRoom = async (e) => {
+  const sendMessage = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-
+    if (!chatText.trim() || !currentRoom) return;
     try {
-      const response = await fetch(`${API_BASE}/api/ftp/create-room`, {
+      await fetch(`${API_BASE}/api/ftp/message/${currentRoom.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomName: newRoomName || undefined,
-          password: newRoomPassword || undefined
-        })
+        body: JSON.stringify({ userId, userName, text: chatText })
       });
-
-      const data = await response.json();
-
-      if (data.success) {
-        showMessage(`Room created! Room ID: ${data.roomId}`);
-        setShowCreateRoom(false);
-        setNewRoomName('');
-        setNewRoomPassword('');
-        loadServerStatus();
-        
-        // Auto-join the created room
-        setTimeout(() => {
-          joinRoom(data.roomId, newRoomPassword);
-        }, 1000);
-      } else {
-        showMessage(data.message, 'error');
-      }
+      setChatText('');
+      refreshRoomData();
     } catch (error) {
-      showMessage('Failed to create room: ' + error.message, 'error');
-    } finally {
-      setIsLoading(false);
+      showMessage('Failed to send message', 'error');
     }
   };
 
   const joinRoom = async (roomId, password = '') => {
     setIsLoading(true);
-
     try {
       const response = await fetch(`${API_BASE}/api/ftp/join/${roomId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password, userId, userName })
       });
-
       const data = await response.json();
-
       if (data.success) {
-        setCurrentRoom({
-          ...data.room,
-          password
-        });
+        setCurrentRoom({ ...data.room, password });
+        setMembers(data.room.members || []);
+        setMessages(data.room.messages || []);
         setShowJoinRoom(false);
-        setJoinRoomId('');
-        setJoinPassword('');
         showMessage(`Joined room: ${data.room.name}`);
-        loadFiles(roomId, password);
       } else {
         showMessage(data.message, 'error');
       }
     } catch (error) {
-      showMessage('Failed to join room: ' + error.message, 'error');
+      showMessage('Failed to join room', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -290,288 +284,120 @@ const FTPMode = () => {
           <div className="room-info">
             <h2>
               <HardDrive className="w-6 h-6" />
-              FTP Room: {currentRoom.name}
+              {currentRoom.name}
             </h2>
             <div className="room-meta">
-              <span>Room ID: <code>{currentRoom.id}</code></span>
-              <span>Files: {files.length}</span>
-              {currentRoom.hasPassword && (
-                <span className="protected">
-                  <Key className="w-4 h-4" />
-                  Protected
-                </span>
-              )}
+              <span>ID: <code>{currentRoom.id}</code></span>
+              <span>{members.length} members online</span>
+              <span className="refresh-tag"><Clock className="w-3 h-3" /> Auto-sync active (1s)</span>
             </div>
           </div>
           <div className="room-actions">
-            <button className="btn btn-secondary" onClick={() => loadFiles()}>
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
-            <button className="btn btn-secondary" onClick={leaveRoom}>
-              Leave Room
-            </button>
+            <button className="btn btn-secondary" onClick={leaveRoom}>Leave Room</button>
           </div>
         </div>
 
-        <div className="upload-section">
-          <div
-            className="upload-area"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onClick={() => document.getElementById('fileInput').click()}
-          >
-            <Upload className="w-12 h-12" />
-            <h3>Drop files here or click to upload</h3>
-            <p>Supports multiple files up to 100MB each</p>
-            <input
-              id="fileInput"
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-            />
-          </div>
+        <div className="members-list">
+          {members.map(m => (
+            <span key={m.userId} className={`member-badge ${m.userId === userId ? 'me' : ''}`}>
+              {m.userName} {m.userId === userId && '(You)'}
+            </span>
+          ))}
         </div>
 
-        <div className="files-section">
-          <h3>Files in Room ({files.length})</h3>
-          {files.length === 0 ? (
-            <div className="no-files">
-              <FileText className="w-12 h-12" />
-              <p>No files uploaded yet</p>
+        <div className="sharing-grid">
+          <div className="files-column">
+            <h3>Files</h3>
+            <div className="upload-area" onClick={() => document.getElementById('fileInput').click()}>
+              <Upload className="w-8 h-8" />
+              <p>Click to Upload</p>
+              <input id="fileInput" type="file" multiple onChange={(e) => uploadFiles(Array.from(e.target.files))} style={{ display: 'none' }} />
             </div>
-          ) : (
-            <div className="files-grid">
-              {files.map((file) => (
-                <div key={file.id} className="file-card">
-                  <div className="file-info">
-                    <h4>{file.name}</h4>
-                    <div className="file-meta">
-                      <span>{formatFileSize(file.size)}</span>
-                      <span>{file.type}</span>
-                      <span className="timestamp">
-                        <Clock className="w-3 h-3" />
-                        {new Date(file.uploadedAt).toLocaleString()}
-                      </span>
+
+            <div className="files-list">
+              {files.length === 0 ? <p className="no-data">No files shared yet</p> : 
+                files.map(f => (
+                  <div key={f.id} className="file-item">
+                    <div className="file-details">
+                      <span className="name">{f.name}</span>
+                      <span className="size">{(f.size/1024/1024).toFixed(2)} MB</span>
                     </div>
-                  </div>
-                  <div className="file-actions">
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => downloadFile(file.id, file.name)}
-                    >
+                    <button className="btn btn-sm btn-primary" onClick={() => downloadFile(f.id, f.name)}>
                       <Download className="w-4 h-4" />
-                      Download
-                    </button>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => deleteFile(file.id, file.name)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
                     </button>
                   </div>
-                </div>
-              ))}
+                ))
+              }
             </div>
-          )}
+          </div>
+
+          <div className="chat-column">
+            <h3>Text Share / Chat</h3>
+            <div className="chat-box" id="chatBox">
+              {messages.length === 0 ? <p className="no-data">No messages yet</p> :
+                messages.map(m => (
+                  <div key={m.id} className={`chat-msg ${m.userId === userId ? 'mine' : ''}`}>
+                    <small>{m.userName}</small>
+                    <p>{m.text}</p>
+                  </div>
+                ))
+              }
+            </div>
+            <form onSubmit={sendMessage} className="chat-input-area">
+              <input type="text" value={chatText} onChange={(e) => setChatText(e.target.value)} placeholder="Type or paste text here..." />
+              <button type="submit" className="btn btn-primary">Send</button>
+            </form>
+          </div>
         </div>
 
         {message && (
           <div className={`message ${message.type}`}>
-            {message.type === 'success' ? (
-              <CheckCircle className="w-5 h-5" />
-            ) : (
-              <AlertCircle className="w-5 h-5" />
-            )}
             {message.text}
           </div>
         )}
 
         <style jsx>{`
-          .ftp-room {
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-          }
+          .ftp-room { padding: 1.5rem; max-width: 1000px; margin: 0 auto; color: white; }
+          .room-header { display: flex; justify-content: space-between; margin-bottom: 1.5rem; }
+          .room-meta { display: flex; gap: 1rem; font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem; }
+          .refresh-tag { color: #22c55e; display: flex; align-items: center; gap: 0.25rem; }
 
-          .room-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-          }
+          .members-list { display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+          .member-badge { background: #334155; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; }
+          .member-badge.me { background: #1e40af; border: 1px solid #3b82f6; }
 
-          .room-info h2 {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: white;
-            margin-bottom: 0.5rem;
-          }
+          .sharing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 
-          .room-meta {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.9rem;
-          }
+          .upload-area { border: 2px dashed #334155; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; margin: 1rem 0; }
+          .upload-area:hover { background: rgba(59, 130, 246, 0.1); border-color: #3b82f6; }
 
-          .room-meta code {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-family: monospace;
-          }
+          .files-list { max-height: 400px; overflow-y: auto; }
+          .file-item { background: #1e293b; padding: 0.75rem 1rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+          .file-details { display: flex; flex-direction: column; }
+          .file-details .name { font-weight: 500; font-size: 0.9rem; }
+          .file-details .size { font-size: 0.75rem; color: #94a3b8; }
 
-          .protected {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            color: #22c55e;
-          }
+          .chat-column { display: flex; flex-direction: column; }
+          .chat-box { height: 350px; background: #0f172a; border-radius: 12px; padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; border: 1px solid #334155; }
+          .chat-msg { background: #334155; padding: 0.5rem 1rem; border-radius: 12px; align-self: flex-start; max-width: 85%; }
+          .chat-msg.mine { align-self: flex-end; background: #3b82f6; }
+          .chat-msg small { font-size: 0.7rem; opacity: 0.7; }
+          .chat-msg p { margin-top: 0.25rem; font-size: 0.9rem; word-break: break-all; }
 
-          .room-actions {
-            display: flex;
-            gap: 1rem;
-          }
+          .chat-input-area { display: flex; gap: 0.5rem; margin-top: 1rem; }
+          .chat-input-area input { flex: 1; background: #0f172a; border: 1px solid #334155; color: white; padding: 0.75rem; border-radius: 8px; }
 
-          .upload-section {
-            margin-bottom: 3rem;
-          }
+          .no-data { text-align: center; color: #64748b; padding: 2rem; font-style: italic; }
 
-          .upload-area {
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 12px;
-            padding: 3rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-          }
-
-          .upload-area:hover {
-            border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.1);
-          }
-
-          .upload-area h3 {
-            color: white;
-            margin: 1rem 0 0.5rem 0;
-          }
-
-          .upload-area p {
-            color: rgba(255, 255, 255, 0.7);
-            margin: 0;
-          }
-
-          .files-section h3 {
-            color: white;
-            margin-bottom: 1rem;
-          }
-
-          .no-files {
-            text-align: center;
-            padding: 3rem;
-            color: rgba(255, 255, 255, 0.7);
-          }
-
-          .files-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 1rem;
-          }
-
-          .file-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-          }
-
-          .file-info h4 {
-            color: white;
-            margin-bottom: 0.5rem;
-            word-break: break-word;
-          }
-
-          .file-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-          }
-
-          .timestamp {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-          }
-
-          .file-actions {
-            display: flex;
-            gap: 0.5rem;
-          }
-
-          .message {
-            position: fixed;
-            top: 2rem;
-            right: 2rem;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 8px;
-            padding: 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            z-index: 1000;
-            max-width: 400px;
-          }
-
-          .message.success {
-            border-color: rgba(34, 197, 94, 0.3);
-            background: rgba(34, 197, 94, 0.1);
-            color: #22c55e;
-          }
-
-          .message.error {
-            border-color: rgba(220, 38, 38, 0.3);
-            background: rgba(220, 38, 38, 0.1);
-            color: #ef4444;
-          }
+          .message { position: fixed; bottom: 2rem; right: 2rem; padding: 1rem; border-radius: 8px; background: #1e293b; z-index: 100; border: 1px solid #334155; }
 
           @media (max-width: 768px) {
-            .ftp-room {
-              padding: 1rem;
-            }
-
-            .room-header {
-              flex-direction: column;
-            }
-
-            .files-grid {
-              grid-template-columns: 1fr;
-            }
-
-            .message {
-              top: 1rem;
-              right: 1rem;
-              left: 1rem;
-              max-width: none;
-            }
+            .sharing-grid { grid-template-columns: 1fr; }
           }
         `}</style>
       </div>
     );
   }
-
   return (
     <div className="ftp-mode">
       <div className="ftp-header">

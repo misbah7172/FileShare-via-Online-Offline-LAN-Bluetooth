@@ -2,6 +2,21 @@ import React from 'react';
 import { Zap, AlertCircle, CheckCircle, Loader, RefreshCw } from 'lucide-react';
 
 const ConnectionStatus = ({ status, connectedPeers, totalPeers, peerStates = {}, peerIceStates = {}, onRestartAll }) => {
+  const [isSameNetwork, setIsSameNetwork] = React.useState(true);
+  
+  // Try to detect if we are on same network (simplified heuristic)
+  React.useEffect(() => {
+    if (status === 'connected' && totalPeers > 0 && connectedPeers === 0) {
+      // If we are "connected" to signaling but 0 peers connect for 5s
+      const timer = setTimeout(() => {
+        setIsSameNetwork(false);
+      }, 8000);
+      return () => clearTimeout(timer);
+    } else {
+      setIsSameNetwork(true);
+    }
+  }, [status, connectedPeers, totalPeers]);
+
   const getStatusInfo = () => {
     switch (status) {
       case 'connected':
@@ -34,12 +49,17 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers, peerStates = {},
             subtext = `Stuck in state: ${stuckPeers[0][1]}. Try restarting or check firewall.`;
           }
 
+          if (!isSameNetwork) {
+             text = 'Network Mismatch Detected';
+             subtext = 'P2P works best when both devices are on the SAME WiFi.';
+          }
+
           return {
-            icon: <Loader size={18} className="status-icon status-connecting spin" />,
+            icon: <Loader size={18} className={`status-icon status-connecting ${!isSameNetwork ? 'error-pulse' : 'spin'}`} />,
             text,
             subtext,
-            className: 'status-connecting',
-            showTroubleshooting
+            className: !isSameNetwork ? 'status-error' : 'status-connecting',
+            showTroubleshooting: true
           };
         }
       case 'connecting':
@@ -79,12 +99,12 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers, peerStates = {},
         
         {statusInfo.showTroubleshooting && (
           <div className="troubleshooting">
-            <p className="trouble-hint">Stuck? Check these:</p>
+            <p className="trouble-hint">Troubleshooting Guide:</p>
             <ul>
-              <li>Both devices must be on the same WiFi</li>
-              <li>Disable "AP Isolation" on your router</li>
-              <li>Allow browser through Windows Firewall</li>
-              <li>Try using Chrome or Edge</li>
+              {!isSameNetwork && <li style={{color: '#ff4d4d', fontWeight: 'bold'}}>⚠️ Both devices MUST be on the SAME WiFi network</li>}
+              <li>Disable "AP Isolation" or "Guest Mode" on your router</li>
+              <li>Turn off VPN on both devices</li>
+              <li>Try using Chrome or Edge browser</li>
             </ul>
             {onRestartAll && (
               <button className="btn btn-xs btn-secondary mt-2" onClick={onRestartAll}>
@@ -106,6 +126,17 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers, peerStates = {},
           transition: all 0.3s ease-in-out;
         }
         
+        @keyframes error-pulse {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.7; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+
+        .error-pulse {
+          animation: error-pulse 1s infinite ease-in-out;
+          color: #ff4d4d !important;
+        }
+
         .troubleshooting {
           margin-top: 1rem;
           padding-top: 1rem;

@@ -27,7 +27,7 @@ const UserList = ({ users, connectedPeers, currentUser, onEditName }) => {
       case 'connected':
         return 'Connected';
       case 'disconnected':
-        return 'Connecting...';
+        return 'Connecting... (Same WiFi required)';
       default:
         return '';
     }

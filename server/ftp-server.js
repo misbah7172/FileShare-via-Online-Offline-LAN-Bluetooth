@@ -7,7 +7,7 @@ const cors = require('cors');
 
 class FTPServer {
   constructor(app = null) {
-    this.activeRooms = new Map(); // roomId -> { password, files, createdAt, lastAccess }
+    this.activeRooms = new Map(); // roomId -> { password, files, members, messages, createdAt, lastAccess }
     this.uploadDir = path.join(__dirname, 'uploads');
     
     // Ensure upload directory exists
@@ -55,9 +55,11 @@ class FTPServer {
         
         const room = {
           id: roomId,
-          name: roomName || `FTP Room ${roomId}`,
+          name: roomName || `Remote Room ${roomId}`,
           password: password || '',
           files: [],
+          members: new Map(), // socketId -> { name, lastSeen }
+          messages: [],
           createdAt: new Date(),
           lastAccess: new Date(),
           type: 'ftp'
@@ -69,22 +71,22 @@ class FTPServer {
           success: true,
           roomId,
           roomName: room.name,
-          message: 'FTP room created successfully'
+          message: 'Remote room created successfully'
         });
       } catch (error) {
         res.status(500).json({
           success: false,
-          message: 'Failed to create FTP room',
+          message: 'Failed to create room',
           error: error.message
         });
       }
     });
 
-    // Join/Access FTP room
+    // Join/Access FTP room (also registers member)
     router.post('/join/:roomId', (req, res) => {
       try {
         const { roomId } = req.params;
-        const { password } = req.body;
+        const { password, userName, userId } = req.body;
 
         const room = this.activeRooms.get(roomId);
         
@@ -102,6 +104,14 @@ class FTPServer {
           });
         }
 
+        // Add or update member
+        if (userId) {
+          room.members.set(userId, {
+            name: userName || 'Anonymous',
+            lastSeen: new Date()
+          });
+        }
+
         room.lastAccess = new Date();
 
         res.json({
@@ -111,7 +121,13 @@ class FTPServer {
             name: room.name,
             hasPassword: !!room.password,
             fileCount: room.files.length,
-            createdAt: room.createdAt
+            createdAt: room.createdAt,
+            members: Array.from(room.members.entries()).map(([id, info]) => ({
+              userId: id,
+              userName: info.name,
+              lastSeen: info.lastSeen
+            })),
+            messages: room.messages.slice(-50) // Return last 50 messages
           }
         });
       } catch (error) {
@@ -120,6 +136,70 @@ class FTPServer {
           message: 'Failed to join room',
           error: error.message
         });
+      }
+    });
+
+    // Heartbeat to keep member in list
+    router.post('/heartbeat/:roomId', (req, res) => {
+      const { roomId } = req.params;
+      const { userId, userName } = req.body;
+      const room = this.activeRooms.get(roomId);
+      
+      if (room && userId) {
+        room.members.set(userId, {
+          name: userName || 'Anonymous',
+          lastSeen: new Date()
+        });
+        room.lastAccess = new Date();
+        
+        // Clean up inactive members (no heartbeat for 10s)
+        const now = new Date();
+        for (const [mid, info] of room.members.entries()) {
+          if (now - info.lastSeen > 10000) {
+            room.members.delete(mid);
+          }
+        }
+
+        res.json({ 
+          success: true,
+          members: Array.from(room.members.entries()).map(([id, info]) => ({
+            userId: id,
+            userName: info.name
+          })),
+          files: room.files.map(file => ({
+            id: file.id,
+            name: file.originalName,
+            size: file.size,
+            type: file.mimetype,
+            uploadedAt: file.uploadedAt
+          })),
+          messages: room.messages.slice(-50)
+        });
+      } else {
+        res.status(404).json({ success: false });
+      }
+    });
+
+    // Send text message
+    router.post('/message/:roomId', (req, res) => {
+      const { roomId } = req.params;
+      const { userId, userName, text } = req.body;
+      const room = this.activeRooms.get(roomId);
+      
+      if (room && userId && text) {
+        const message = {
+          id: crypto.randomUUID(),
+          userId,
+          userName: userName || 'Anonymous',
+          text,
+          timestamp: new Date()
+        };
+        room.messages.push(message);
+        if (room.messages.length > 100) room.messages.shift(); // Keep only last 100
+        
+        res.json({ success: true, message });
+      } else {
+        res.status(400).json({ success: false });
       }
     });
 
@@ -337,6 +417,7 @@ class FTPServer {
           name: room.name,
           hasPassword: !!room.password,
           fileCount: room.files.length,
+          memberCount: room.members.size,
           createdAt: room.createdAt,
           lastAccess: room.lastAccess
         }));
@@ -387,227 +468,34 @@ class FTPServer {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FileShare FTP Server</title>
+    <title>FileShare Remote Server</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: white;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-            font-size: 1.2rem;
-            opacity: 0.9;
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            padding: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            margin-bottom: 2rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-size: 1rem;
-        }
-
-        .form-group input::placeholder {
-            color: rgba(255, 255, 255, 0.6);
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #22c55e;
-            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
-        }
-
-        .btn {
-            background: #22c55e;
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-            margin-right: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .btn:hover {
-            background: #16a34a;
-            transform: translateY(-2px);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        .btn-danger {
-            background: #dc2626;
-        }
-
-        .btn-danger:hover {
-            background: #b91c1c;
-        }
-
-        .file-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1rem;
-            margin-top: 2rem;
-        }
-
-        .file-card {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .file-info h3 {
-            margin-bottom: 0.5rem;
-            word-break: break-word;
-        }
-
-        .file-meta {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-
-        .file-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .upload-area {
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 12px;
-            padding: 3rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .upload-area:hover {
-            border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.1);
-        }
-
-        .upload-area.drag-over {
-            border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.2);
-        }
-
-        .status {
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-
-        .status.success {
-            background: rgba(34, 197, 94, 0.2);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-        }
-
-        .status.error {
-            background: rgba(220, 38, 38, 0.2);
-            border: 1px solid rgba(220, 38, 38, 0.3);
-        }
-
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: white;
-            animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .file-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #0f172a; color: white; min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .header { text-align: center; margin-bottom: 2rem; }
+        .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #334155; }
+        .btn { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-secondary { background: #475569; color: white; }
+        .form-group { margin-bottom: 1rem; }
+        input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+        .members-list { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .member-badge { background: #334155; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; }
+        .chat-box { height: 300px; overflow-y: auto; background: #0f172a; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .chat-msg { background: #334155; padding: 0.5rem 1rem; border-radius: 8px; align-self: flex-start; max-width: 80%; }
+        .chat-msg.mine { align-self: flex-end; background: #3b82f6; }
+        .chat-msg small { display: block; font-size: 0.7rem; opacity: 0.7; margin-bottom: 0.25rem; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📁 FileShare FTP Server</h1>
-            <p>Offline File Transfer System - No Internet Required</p>
-        </div>
-
-        ${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
+        <div class="header"><h1>🌐 FileShare Remote</h1><p>Sharing over the Internet</p></div>
+        \${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
     </div>
-
-    <script>
-        ${this.generateJavaScript(roomId)}
-    </script>
+    <script>\${this.generateJavaScript(roomId)}</script>
 </body>
 </html>`;
   }
@@ -615,61 +503,41 @@ class FTPServer {
   generateMainInterface() {
     return `
         <div class="card">
-            <h2>Create New FTP Room</h2>
-            <form id="createRoomForm">
-                <div class="form-group">
-                    <label for="roomName">Room Name (Optional)</label>
-                    <input type="text" id="roomName" placeholder="Enter room name">
-                </div>
-                <div class="form-group">
-                    <label for="roomPassword">Password (Optional)</label>
-                    <input type="password" id="roomPassword" placeholder="Enter password for protection">
-                </div>
-                <button type="submit" class="btn">Create FTP Room</button>
-            </form>
+            <h2>Create New Room</h2>
+            <form id="createRoomForm"><div class="form-group"><input type="text" id="roomName" placeholder="Room Name (Optional)"></div><div class="form-group"><input type="password" id="roomPassword" placeholder="Password (Optional)"></div><button type="submit" class="btn btn-primary">Create Room</button></form>
         </div>
-
         <div class="card">
-            <h2>Join Existing FTP Room</h2>
-            <form id="joinRoomForm">
-                <div class="form-group">
-                    <label for="joinRoomId">Room ID</label>
-                    <input type="text" id="joinRoomId" placeholder="Enter 6-character room ID" maxlength="6" style="text-transform: uppercase; font-family: monospace;">
-                </div>
-                <div class="form-group">
-                    <label for="joinPassword">Password</label>
-                    <input type="password" id="joinPassword" placeholder="Enter room password (if required)">
-                </div>
-                <button type="submit" class="btn">Join FTP Room</button>
-            </form>
-        </div>
-
-        <div id="statusMessage"></div>
-    `;
+            <h2>Join Room</h2>
+            <form id="joinRoomForm"><div class="form-group"><input type="text" id="joinRoomId" placeholder="Room ID" maxlength="6"></div><div class="form-group"><input type="password" id="joinPassword" placeholder="Password"></div><button type="submit" class="btn btn-primary">Join Room</button></form>
+        </div>`;
   }
 
   generateRoomInterface(roomId) {
     return `
         <div class="card">
-            <h2>FTP Room: ${roomId}</h2>
-            <div id="roomInfo"></div>
-            
-            <div class="upload-area" id="uploadArea">
-                <p>📁 Drop files here or click to select</p>
-                <input type="file" id="fileInput" multiple class="hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2>Room: ${roomId}</h2>
+                <div id="membersCount" class="member-badge">0 members</div>
             </div>
+            <div id="membersList" class="members-list"></div>
             
-            <div id="uploadStatus"></div>
-        </div>
-
-        <div class="card">
-            <h2>Files in Room</h2>
-            <button class="btn btn-secondary" onclick="refreshFiles()">🔄 Refresh</button>
-            <div id="filesList"></div>
-        </div>
-
-        <div id="statusMessage"></div>
-    `;
+            <div class="grid">
+                <div>
+                    <h3>Upload Files</h3>
+                    <div id="uploadArea" style="border: 2px dashed #334155; padding: 2rem; text-align: center; border-radius: 12px; cursor: pointer; margin-top: 1rem;">📁 Drop or Click</div>
+                    <input type="file" id="fileInput" multiple class="hidden">
+                    <div id="filesList" style="margin-top: 1rem;"></div>
+                </div>
+                <div>
+                    <h3>Chat / Text Share</h3>
+                    <div id="chatBox" class="chat-box"></div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <input type="text" id="chatInput" placeholder="Type a message...">
+                        <button id="sendBtn" class="btn btn-primary">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
   }
 
   generateJavaScript(roomId) {
@@ -677,20 +545,8 @@ class FTPServer {
         const API_BASE = window.location.origin;
         let currentRoomId = '${roomId || ''}';
         let currentPassword = '';
-
-        function showStatus(message, type = 'success') {
-            const statusDiv = document.getElementById('statusMessage');
-            statusDiv.innerHTML = \`<div class="status \${type}">\${message}</div>\`;
-            setTimeout(() => statusDiv.innerHTML = '', 5000);
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
+        let myId = Math.random().toString(36).substring(7);
+        let myName = prompt('Enter your name:') || 'User_' + myId.substring(0, 3);
 
         ${roomId ? this.generateRoomJavaScript() : this.generateMainJavaScript()}
     `;
@@ -700,266 +556,100 @@ class FTPServer {
     return `
         document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const roomName = document.getElementById('roomName').value;
-            const password = document.getElementById('roomPassword').value;
-            
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/create-room\`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roomName, password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showStatus(\`Room created successfully! Room ID: \${data.roomId}\`);
-                    setTimeout(() => {
-                        window.location.href = \`\${API_BASE}/ftp/\${data.roomId}\`;
-                    }, 2000);
-                } else {
-                    showStatus(data.message, 'error');
-                }
-            } catch (error) {
-                showStatus('Failed to create room: ' + error.message, 'error');
-            }
+            const res = await fetch(\`\${API_BASE}/api/ftp/create-room\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomName: document.getElementById('roomName').value, password: document.getElementById('roomPassword').value })
+            });
+            const data = await res.json();
+            if(data.success) window.location.href = \`\${API_BASE}/ftp/\${data.roomId}\`;
         });
-
-        document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
+        document.getElementById('joinRoomForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            
-            const roomId = document.getElementById('joinRoomId').value.toUpperCase();
-            const password = document.getElementById('joinPassword').value;
-            
-            if (roomId.length !== 6) {
-                showStatus('Room ID must be 6 characters', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${roomId}\`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showStatus('Joining room...');
-                    window.location.href = \`\${API_BASE}/ftp/\${roomId}\`;
-                } else {
-                    showStatus(data.message, 'error');
-                }
-            } catch (error) {
-                showStatus('Failed to join room: ' + error.message, 'error');
-            }
-        });
-
-        // Auto-format room ID input
-        document.getElementById('joinRoomId').addEventListener('input', (e) => {
-            e.target.value = e.target.value.toUpperCase();
-        });
-    `;
+            window.location.href = \`\${API_BASE}/ftp/\${document.getElementById('joinRoomId').value.toUpperCase()}\`;
+        });`;
   }
 
   generateRoomJavaScript() {
     return `
-        // Get password from user when page loads
-        if (currentRoomId) {
-            const password = prompt('Enter room password (leave blank if no password):') || '';
-            currentPassword = password;
-            loadRoomInfo();
-            loadFiles();
-        }
-
-        async function loadRoomInfo() {
+        async function refresh() {
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${currentRoomId}\`, {
+                const res = await fetch(\`\${API_BASE}/api/ftp/heartbeat/\${currentRoomId}\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: currentPassword })
+                    body: JSON.stringify({ userId: myId, userName: myName })
                 });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('roomInfo').innerHTML = \`
-                        <p><strong>Room:</strong> \${data.room.name}</p>
-                        <p><strong>Files:</strong> \${data.room.fileCount}</p>
-                        <p><strong>Created:</strong> \${new Date(data.room.createdAt).toLocaleString()}</p>
-                    \`;
-                } else {
-                    showStatus(data.message, 'error');
+                const data = await res.json();
+                if(data.success) {
+                    updateMembers(data.members);
+                    updateFiles(data.files);
+                    updateChat(data.messages);
                 }
-            } catch (error) {
-                showStatus('Failed to load room info: ' + error.message, 'error');
-            }
+            } catch(e) {}
         }
 
-        async function loadFiles() {
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/files/\${currentRoomId}\`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: currentPassword })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    const filesDiv = document.getElementById('filesList');
-                    
-                    if (data.files.length === 0) {
-                        filesDiv.innerHTML = '<p>No files uploaded yet.</p>';
-                        return;
-                    }
-                    
-                    filesDiv.innerHTML = \`
-                        <div class="file-grid">
-                            \${data.files.map(file => \`
-                                <div class="file-card">
-                                    <div class="file-info">
-                                        <h3>\${file.name}</h3>
-                                        <div class="file-meta">
-                                            <p>Size: \${formatFileSize(file.size)}</p>
-                                            <p>Type: \${file.type}</p>
-                                            <p>Uploaded: \${new Date(file.uploadedAt).toLocaleString()}</p>
-                                        </div>
-                                    </div>
-                                    <div class="file-actions">
-                                        <button class="btn" onclick="downloadFile('\${file.id}', '\${file.name}')">📥 Download</button>
-                                        <button class="btn btn-danger" onclick="deleteFile('\${file.id}', '\${file.name}')">🗑️ Delete</button>
-                                    </div>
-                                </div>
-                            \`).join('')}
-                        </div>
-                    \`;
-                } else {
-                    showStatus(data.message, 'error');
-                }
-            } catch (error) {
-                showStatus('Failed to load files: ' + error.message, 'error');
-            }
+        function updateMembers(members) {
+            const list = document.getElementById('membersList');
+            document.getElementById('membersCount').innerText = \`\${members.length} member(s)\`;
+            list.innerHTML = members.map(m => \`<span class="member-badge">\${m.userName}\${m.userId === myId ? ' (You)' : ''}</span>\`).join('');
         }
 
-        function refreshFiles() {
-            loadFiles();
-            showStatus('Files refreshed');
+        function updateFiles(files) {
+            const list = document.getElementById('filesList');
+            if(files.length === 0) { list.innerHTML = '<p>No files yet.</p>'; return; }
+            list.innerHTML = files.map(f => \`
+                <div class="card" style="padding: 1rem; margin-top: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span>\${f.name} (\${(f.size/1024/1024).toFixed(2)} MB)</span>
+                    <button class="btn btn-primary" onclick="download('\${f.id}', '\${f.name}')">Download</button>
+                </div>\`).join('');
         }
 
-        async function downloadFile(fileId, fileName) {
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/download/\${currentRoomId}/\${fileId}\`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: currentPassword })
-                });
-                
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = fileName;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    showStatus(\`Downloading \${fileName}\`);
-                } else {
-                    const data = await response.json();
-                    showStatus(data.message, 'error');
-                }
-            } catch (error) {
-                showStatus('Failed to download file: ' + error.message, 'error');
-            }
+        function updateChat(messages) {
+            const box = document.getElementById('chatBox');
+            const atBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 50;
+            box.innerHTML = messages.map(m => \`
+                <div class="chat-msg \${m.userId === myId ? 'mine' : ''}">
+                    <small>\${m.userName}</small>
+                    <div>\${m.text}</div>
+                </div>\`).join('');
+            if(atBottom) box.scrollTop = box.scrollHeight;
         }
 
-        async function deleteFile(fileId, fileName) {
-            if (!confirm(\`Are you sure you want to delete "\${fileName}"?\`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/delete/\${currentRoomId}/\${fileId}\`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: currentPassword })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showStatus(\`File "\${fileName}" deleted successfully\`);
-                    loadFiles();
-                } else {
-                    showStatus(data.message, 'error');
-                }
-            } catch (error) {
-                showStatus('Failed to delete file: ' + error.message, 'error');
-            }
+        async function sendMsg() {
+            const input = document.getElementById('chatInput');
+            if(!input.value.trim()) return;
+            await fetch(\`\${API_BASE}/api/ftp/message/\${currentRoomId}\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: myId, userName: myName, text: input.value })
+            });
+            input.value = '';
+            refresh();
         }
 
-        // File upload functionality
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
+        document.getElementById('sendBtn').onclick = sendMsg;
+        document.getElementById('chatInput').onkeypress = (e) => { if(e.key === 'Enter') sendMsg(); };
 
-        uploadArea.addEventListener('click', () => fileInput.click());
-
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('drag-over');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('drag-over');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('drag-over');
-            handleFiles(e.dataTransfer.files);
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            handleFiles(e.target.files);
-        });
-
-        async function handleFiles(files) {
-            if (files.length === 0) return;
-            
-            const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.innerHTML = '<div class="status"><div class="loading"></div> Uploading files...</div>';
-            
+        const upArea = document.getElementById('uploadArea');
+        const fInput = document.getElementById('fileInput');
+        upArea.onclick = () => fInput.click();
+        fInput.onchange = async () => {
             const formData = new FormData();
-            for (let file of files) {
-                formData.append('files', file);
-            }
-            formData.append('password', currentPassword);
-            
-            try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/upload/\${currentRoomId}\`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    statusDiv.innerHTML = \`<div class="status success">\${data.message}</div>\`;
-                    loadFiles();
-                    loadRoomInfo();
-                    fileInput.value = '';
-                } else {
-                    statusDiv.innerHTML = \`<div class="status error">\${data.message}</div>\`;
-                }
-            } catch (error) {
-                statusDiv.innerHTML = \`<div class="status error">Upload failed: \${error.message}</div>\`;
-            }
-            
-            setTimeout(() => statusDiv.innerHTML = '', 5000);
+            for(let f of fInput.files) formData.append('files', f);
+            await fetch(\`\${API_BASE}/api/ftp/upload/\${currentRoomId}\`, { method: 'POST', body: formData });
+            fInput.value = '';
+            refresh();
+        };
+
+        async function download(fid, name) {
+            const res = await fetch(\`\${API_BASE}/api/ftp/download/\${currentRoomId}/\${fid}\`, { method: 'POST' });
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name; a.click();
         }
-    `;
+
+        setInterval(refresh, 1000);
+        refresh();`;
   }
 
   cleanupOldRooms() {
@@ -972,16 +662,13 @@ class FTPServer {
         if (fs.existsSync(roomDir)) {
           fs.rmSync(roomDir, { recursive: true, force: true });
         }
-        
         this.activeRooms.delete(roomId);
-        console.log(`🧹 Cleaned up old FTP room: ${roomId}`);
+        console.log(`🧹 Cleaned up old room: ${roomId}`);
       }
     }
   }
 
-  stop() {
-    console.log('📁 FTP Server handlers stopped');
-  }
+  stop() { console.log('📁 FTP Server handlers stopped'); }
 }
 
 module.exports = FTPServer;

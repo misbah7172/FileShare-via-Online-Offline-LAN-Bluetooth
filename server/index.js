@@ -18,9 +18,6 @@ const server = http.createServer(app);
 // Initialize LAN Discovery
 const lanDiscovery = new LANDiscovery(process.env.PORT || 3001);
 
-// Initialize FTP Server
-const ftpServer = new FTPServer();
-
 // Configure CORS
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
@@ -38,6 +35,9 @@ app.use(helmet({
   contentSecurityPolicy: false // Disable CSP for development
 }));
 app.use(express.json());
+
+// Initialize FTP Server (integrated into main app for Render)
+const ftpServer = new FTPServer(app);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -211,23 +211,8 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     rooms.get(roomId).add(socket.id);
     
-    // Notify user of successful room creation
-    const responseData = {
-      roomId,
-      userName: userNames.get(socket.id),
-      hasPassword: !!password
-    };
-    console.log(`📤 Sending room-created event:`, responseData);
-    socket.emit('room-created', responseData);
-    
-    // Broadcast to other users in room
-    socket.to(roomId).emit('user-joined', {
-      userId: socket.id,
-      userName: userNames.get(socket.id),
-      userCount: rooms.get(roomId).size
-    });
-    
-    console.log(`✅ Room ${roomId} created by ${socket.id} (${userName})`);
+    const clientIp = socket.handshake.address;
+    console.log(`✅ Room ${roomId} created by ${socket.id} from ${clientIp} (${userName})`);
   });
 
   socket.on('join-room', (data) => {
@@ -278,7 +263,8 @@ io.on('connection', (socket) => {
       userCount: rooms.get(roomId).size
     });
     
-    console.log(`User ${socket.id} (${userNames.get(socket.id)}) joined room ${roomId}`);
+    const clientIp = socket.handshake.address;
+    console.log(`User ${socket.id} (${userNames.get(socket.id)}) from ${clientIp} joined room ${roomId}`);
   });
 
   socket.on('change-name', (data) => {
@@ -545,9 +531,6 @@ async function startServer() {
       console.log(`🔍 LAN Discovery active on UDP port 3002`);
       console.log(`📱 Device ID: ${lanDiscovery.deviceInfo.deviceId}`);
       console.log(`🏠 Hostname: ${lanDiscovery.deviceInfo.hostname}`);
-      
-      // Start FTP Server
-      ftpServer.start(3003);
       
       // Start discovering devices after server is up
       setTimeout(() => {

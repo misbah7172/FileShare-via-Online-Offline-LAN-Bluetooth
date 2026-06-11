@@ -38,13 +38,16 @@ RENDER_EXTERNAL_URL (automatically set by Render)
 
 ## Features Available on Render
 
-✅ **Internet Mode**: Full P2P file sharing functionality
+✅ **WiFi Mode (P2P)**: Full P2P file sharing functionality
+✅ **Internet Mode (Remote)**: Reliable sharing via server upload (NEW!)
 ✅ **Room Management**: Create/join rooms with passwords  
 ✅ **Real-time Transfers**: WebRTC direct peer connections
 ✅ **QR Code Sharing**: Easy mobile access
 ✅ **Cross-platform**: Works on all devices with browsers
 
-❌ **LAN Mode**: Not available (requires local network)
-❌ **FTP Server**: Not available (requires local network)
+❌ **LAN Mode**: Not available when hosted on Render (requires local network)
 
-For LAN and FTP features, users need to clone and run the project locally.
+For LAN features, users need to clone and run the project locally.
+
+## Internet Mode (Remote) - Server Relay
+The new Internet Mode (Remote) allows you to share files even if WebRTC P2P fails. Files are uploaded to the Render server and can be downloaded by anyone in the same room. Note that the free tier of Render has storage limits and files are deleted when the server restarts.

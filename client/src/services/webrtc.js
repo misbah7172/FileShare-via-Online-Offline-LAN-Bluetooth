@@ -4,7 +4,11 @@ const rtcConfig = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-  ]
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
+  ],
+  iceCandidatePoolSize: 10,
 };
 
 // File chunk size (64KB)
@@ -24,9 +28,11 @@ class PeerConnection {
     this.queuedCandidates = []; // Queue for ICE candidates received before remote description
     
     // Determine if this peer should be "polite" based on user IDs
+    // We use a simple alphabetical comparison of socket IDs
     this.isPolite = this.localUserId < this.remoteUserId;
     this.makingOffer = false;
     this.ignoreOffer = false;
+    this.isSettingRemoteDescription = false;
     
     console.log(`🤝 Peer ${this.remoteUserId} - I am ${this.isPolite ? 'polite' : 'impolite'}`);
     
@@ -44,23 +50,25 @@ class PeerConnection {
           roomId: this.roomId
         });
       } else {
-        console.log('🏁 ICE gathering complete');
+        console.log('🏁 ICE gathering complete for', this.remoteUserId);
       }
     };
 
     // Handle connection state changes
     this.pc.onconnectionstatechange = () => {
-      console.log(`🔄 Connection state with ${this.remoteUserId}: ${this.pc.connectionState}`);
-      if (this.pc.connectionState === 'connected') {
+      const state = this.pc.connectionState;
+      console.log(`🔄 Connection state with ${this.remoteUserId}: ${state}`);
+      this.onStateChange?.(state);
+
+      if (state === 'connected') {
         this.connected = true;
         this.onConnected?.();
-      } else if (this.pc.connectionState === 'failed') {
-        console.error(`💥 Connection failed with ${this.remoteUserId}, attempting restart`);
+      } else if (state === 'failed') {
+        console.error(`💥 Connection failed with ${this.remoteUserId}`);
         this.connected = false;
         this.onDisconnected?.();
-        // Attempt to restart the connection
-        this.restartConnection();
-      } else if (['disconnected', 'closed'].includes(this.pc.connectionState)) {
+        // Don't restart immediately to avoid loops, let the UI handle it or wait a bit
+      } else if (['disconnected', 'closed'].includes(state)) {
         this.connected = false;
         this.onDisconnected?.();
       }
@@ -68,7 +76,13 @@ class PeerConnection {
 
     // Handle ICE connection state changes
     this.pc.oniceconnectionstatechange = () => {
-      console.log(`🧊 ICE connection state with ${this.remoteUserId}: ${this.pc.iceConnectionState}`);
+      const state = this.pc.iceConnectionState;
+      console.log(`🧊 ICE connection state with ${this.remoteUserId}: ${state}`);
+      this.onIceStateChange?.(state);
+      
+      if (state === 'failed') {
+        this.pc.restartIce();
+      }
     };
 
     // Handle signaling state changes
@@ -87,41 +101,36 @@ class PeerConnection {
     this.pc.onnegotiationneeded = async () => {
       try {
         console.log(`🔄 Negotiation needed with ${this.remoteUserId}`);
-        if (this.pc.signalingState !== 'stable') {
-          console.log('⏳ Deferring negotiation - signaling state not stable');
-          return;
-        }
+        this.makingOffer = true;
+        await this.pc.setLocalDescription();
         
-        // Only create offer if we're the designated initiator
-        if (this.localUserId > this.remoteUserId) {
-          await this.createOffer();
-        }
+        console.log(`📤 Sending offer to ${this.remoteUserId}`);
+        this.socket.emit('offer', {
+          targetUserId: this.remoteUserId,
+          offer: this.pc.localDescription,
+          roomId: this.roomId
+        });
       } catch (error) {
         console.error('❌ Error during negotiation:', error);
+      } finally {
+        this.makingOffer = false;
       }
     };
   }
 
   async createOffer() {
     try {
-      // Don't create offer if we're already making one or if there's an incoming offer
-      if (this.makingOffer) {
-        console.log(`⚠️ Already making offer to ${this.remoteUserId}, skipping`);
-        return;
-      }
-      
-      // Check signaling state - only create offer in stable state
-      if (this.pc.signalingState !== 'stable') {
-        console.log(`⚠️ Cannot create offer in ${this.pc.signalingState} state`);
+      if (this.makingOffer || this.pc.signalingState !== 'stable') {
+        console.log(`⚠️ Skipping createOffer: makingOffer=${this.makingOffer}, state=${this.pc.signalingState}`);
         return;
       }
       
       this.isInitiator = true;
       this.makingOffer = true;
       
-      console.log(`📞 Creating offer to ${this.remoteUserId} (I am ${this.isPolite ? 'polite' : 'impolite'})`);
+      console.log(`📞 Creating offer to ${this.remoteUserId}`);
       
-      // Create data channel for file transfers only if we're the initiator
+      // Create data channel for file transfers
       if (!this.dataChannel) {
         this.dataChannel = this.pc.createDataChannel('fileTransfer', {
           ordered: true,
@@ -130,35 +139,17 @@ class PeerConnection {
         this.setupDataChannel(this.dataChannel);
       }
 
-      const offer = await this.pc.createOffer({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: false
-      });
-      
-      // Double-check state before setting local description
-      if (this.pc.signalingState !== 'stable') {
-        console.log(`⚠️ Signaling state changed to ${this.pc.signalingState}, aborting offer`);
-        return;
-      }
-      
-      await this.pc.setLocalDescription(offer);
+      await this.pc.setLocalDescription();
       
       console.log(`📤 Sending offer to ${this.remoteUserId}`);
       this.socket.emit('offer', {
         targetUserId: this.remoteUserId,
-        offer: offer,
+        offer: this.pc.localDescription,
         roomId: this.roomId
       });
     } catch (error) {
       console.error('❌ Error creating offer:', error);
-      
-      // Reset peer connection on critical errors
-      if (error.name === 'InvalidStateError' || error.message.includes('m-line')) {
-        console.log('🔄 Restarting connection due to signaling state error');
-        setTimeout(() => this.restartConnection(), 2000);
-      } else {
-        this.onError?.('Failed to create offer: ' + error.message);
-      }
+      this.onError?.('Failed to create offer: ' + error.message);
     } finally {
       this.makingOffer = false;
     }
@@ -166,52 +157,49 @@ class PeerConnection {
 
   async handleOffer(offer) {
     try {
-      console.log(`📞 Handling offer from ${this.remoteUserId} (I am ${this.isPolite ? 'polite' : 'impolite'})`);
-      console.log(`🔄 Current signaling state: ${this.pc.signalingState}`);
-      console.log(`🔄 Making offer: ${this.makingOffer}`);
+      console.log(`📞 Handling offer from ${this.remoteUserId}`);
       
-      // Implement polite peer pattern
-      const offerCollision = this.pc.signalingState !== 'stable' || this.makingOffer;
-      
+      const offerCollision = this.makingOffer || this.pc.signalingState !== 'stable';
       this.ignoreOffer = !this.isPolite && offerCollision;
+      
       if (this.ignoreOffer) {
-        console.log(`🚫 Ignoring offer (impolite peer in collision)`);
+        console.log(`🚫 Ignoring offer from ${this.remoteUserId} (impolite peer in collision)`);
         return;
       }
       
+      this.isSettingRemoteDescription = true;
       await this.pc.setRemoteDescription(offer);
-      const answer = await this.pc.createAnswer();
-      await this.pc.setLocalDescription(answer);
+      await this.pc.setLocalDescription();
       
       console.log('📤 Sending answer to', this.remoteUserId);
       this.socket.emit('answer', {
         targetUserId: this.remoteUserId,
-        answer: answer,
+        answer: this.pc.localDescription,
         roomId: this.roomId
       });
       
-      // Process any queued ICE candidates
+      this.isSettingRemoteDescription = false;
       await this.processQueuedCandidates();
     } catch (error) {
       console.error('❌ Error handling offer:', error);
       this.onError?.('Failed to handle offer: ' + error.message);
+    } finally {
+      this.isSettingRemoteDescription = false;
     }
   }
 
   async handleAnswer(answer) {
     try {
       console.log('📞 Handling answer from', this.remoteUserId);
-      console.log(`🔄 Current signaling state: ${this.pc.signalingState}`);
       
-      if (this.pc.signalingState !== 'have-local-offer') {
-        console.warn('⚠️ Received answer in wrong state:', this.pc.signalingState);
+      if (this.pc.signalingState === 'stable') {
+        console.warn('⚠️ Received answer but signaling state is already stable');
         return;
       }
       
       await this.pc.setRemoteDescription(answer);
-      console.log('✅ Answer processed successfully');
+      console.log('✅ Answer processed successfully for', this.remoteUserId);
       
-      // Process any queued ICE candidates
       await this.processQueuedCandidates();
     } catch (error) {
       console.error('❌ Error handling answer:', error);
@@ -221,38 +209,36 @@ class PeerConnection {
 
   async handleIceCandidate(candidate) {
     try {
-      // Only add ICE candidates if we have a remote description
+      if (!candidate) return;
+
+      // Logic from Perfect Negotiation pattern
       if (this.pc.remoteDescription && this.pc.remoteDescription.type) {
         console.log('🧊 Adding ICE candidate from', this.remoteUserId);
         await this.pc.addIceCandidate(candidate);
       } else {
-        console.log('⏳ Queuing ICE candidate (no remote description yet)');
-        // Queue the candidate for later when remote description is set
-        if (!this.queuedCandidates) {
-          this.queuedCandidates = [];
-        }
+        console.log('⏳ Queuing ICE candidate (no remote description yet) from', this.remoteUserId);
         this.queuedCandidates.push(candidate);
       }
     } catch (error) {
-      console.error('❌ Error handling ICE candidate:', error);
-      // Don't throw error for ICE candidate failures, just log them
-      if (!error.message.includes('InvalidStateError')) {
-        this.onError?.('Failed to handle ICE candidate: ' + error.message);
+      if (!this.ignoreOffer) {
+        console.error('❌ Error handling ICE candidate:', error);
       }
     }
   }
 
   async processQueuedCandidates() {
-    if (this.queuedCandidates && this.queuedCandidates.length > 0) {
+    if (this.queuedCandidates.length > 0) {
       console.log('🔄 Processing', this.queuedCandidates.length, 'queued ICE candidates');
-      for (const candidate of this.queuedCandidates) {
+      const candidates = [...this.queuedCandidates];
+      this.queuedCandidates = [];
+      
+      for (const candidate of candidates) {
         try {
           await this.pc.addIceCandidate(candidate);
         } catch (error) {
           console.error('❌ Error adding queued candidate:', error);
         }
       }
-      this.queuedCandidates = [];
     }
   }
 
@@ -265,8 +251,6 @@ class PeerConnection {
       console.log('✅ Data channel opened with', this.remoteUserId);
       this.connected = true;
       this.onConnected?.();
-      
-      // Send available files list when connected
       this.sendAvailableFilesList();
     };
 
@@ -282,11 +266,9 @@ class PeerConnection {
     };
 
     channel.onmessage = (event) => {
-      // Handle both string messages (JSON) and binary data (file chunks)
       if (typeof event.data === 'string') {
         this.handleDataChannelMessage(event.data);
       } else {
-        // Binary data - this is a file chunk
         this.handleRawChunkData(event.data);
       }
     };
@@ -815,6 +797,8 @@ export class WebRTCManager {
       // Set up event handlers
       peer.onConnected = () => this.onPeerConnected?.(userId);
       peer.onDisconnected = () => this.onPeerDisconnected?.(userId);
+      peer.onStateChange = (state) => this.onPeerStateChange?.(userId, state);
+      peer.onIceStateChange = (state) => this.onPeerIceStateChange?.(userId, state);
       peer.onError = (error) => this.onPeerError?.(userId, error);
       peer.onFileOffer = (offer) => this.onFileOffer?.(userId, offer);
       peer.onFileProgress = (transferId, progress, sent, total) => 
@@ -831,6 +815,13 @@ export class WebRTCManager {
     }
     
     return this.peers.get(userId);
+  }
+
+  restartConnection(userId) {
+    const peer = this.peers.get(userId);
+    if (peer) {
+      peer.restartConnection();
+    }
   }
 
   async connectToPeer(userId) {

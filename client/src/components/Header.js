@@ -15,18 +15,18 @@ const Header = ({ onToggleLAN, onToggleFTP, isLANMode, isFTPMode }) => {
           <button 
             className={`mode-toggle ${isLANMode ? 'active' : ''}`}
             onClick={onToggleLAN}
-            title={isLANMode ? 'Switch to Internet Mode' : 'Switch to LAN Mode'}
+            title={isLANMode ? 'Switch to WiFi Mode' : 'Switch to LAN Mode'}
           >
             {isLANMode ? <Router size={18} /> : <Wifi size={18} />}
-            <span>{isLANMode ? 'LAN Mode' : 'Internet'}</span>
+            <span>{isLANMode ? 'LAN Mode' : 'WiFi Mode'}</span>
           </button>
           <button 
             className={`mode-toggle ${isFTPMode ? 'active' : ''}`}
             onClick={onToggleFTP}
-            title={isFTPMode ? 'Switch to Internet Mode' : 'Switch to FTP Mode'}
+            title={isFTPMode ? 'Switch to WiFi Mode' : 'Switch to Internet Mode'}
           >
             <Server size={18} />
-            <span>{isFTPMode ? 'FTP Mode' : 'FTP Server'}</span>
+            <span>{isFTPMode ? 'Internet Mode' : 'Remote Sharing'}</span>
           </button>
         </div>
       </div>

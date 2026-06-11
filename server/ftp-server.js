@@ -6,41 +6,14 @@ const crypto = require('crypto');
 const cors = require('cors');
 
 class FTPServer {
-  constructor() {
-    this.app = express();
+  constructor(app = null) {
     this.activeRooms = new Map(); // roomId -> { password, files, createdAt, lastAccess }
     this.uploadDir = path.join(__dirname, 'uploads');
-    this.setupServer();
-  }
-
-  setupServer() {
+    
     // Ensure upload directory exists
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
     }
-
-    // Enable CORS for local network access
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or Postman)
-        if (!origin) return callback(null, true);
-        
-        // Allow localhost
-        if (origin.includes('localhost')) return callback(null, true);
-        
-        // Allow local network ranges
-        if (origin.match(/^https?:\/\/192\.168\.\d+\.\d+/)) return callback(null, true);
-        if (origin.match(/^https?:\/\/10\.\d+\.\d+\.\d+/)) return callback(null, true);
-        if (origin.match(/^https?:\/\/172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+/)) return callback(null, true);
-        
-        // Deny all other origins
-        callback(new Error('Not allowed by CORS'));
-      },
-      credentials: true
-    }));
-
-    this.app.use(express.json());
-    this.app.use(express.static(path.join(__dirname, 'public')));
 
     // Configure multer for file uploads
     const storage = multer.diskStorage({
@@ -53,7 +26,6 @@ class FTPServer {
         cb(null, roomDir);
       },
       filename: (req, file, cb) => {
-        // Preserve original filename with timestamp to avoid conflicts
         const timestamp = Date.now();
         const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
         cb(null, `${timestamp}-${originalName}`);
@@ -67,12 +39,16 @@ class FTPServer {
       }
     });
 
-    this.setupRoutes();
+    if (app) {
+      this.setupRoutes(app);
+    }
   }
 
-  setupRoutes() {
+  setupRoutes(app) {
+    const router = express.Router();
+
     // Create a new FTP room
-    this.app.post('/api/ftp/create-room', (req, res) => {
+    router.post('/create-room', (req, res) => {
       try {
         const { password, roomName } = req.body;
         const roomId = this.generateRoomId();
@@ -105,7 +81,7 @@ class FTPServer {
     });
 
     // Join/Access FTP room
-    this.app.post('/api/ftp/join/:roomId', (req, res) => {
+    router.post('/join/:roomId', (req, res) => {
       try {
         const { roomId } = req.params;
         const { password } = req.body;
@@ -126,7 +102,6 @@ class FTPServer {
           });
         }
 
-        // Update last access
         room.lastAccess = new Date();
 
         res.json({
@@ -149,7 +124,7 @@ class FTPServer {
     });
 
     // Upload files to FTP room
-    this.app.post('/api/ftp/upload/:roomId', this.upload.array('files', 10), (req, res) => {
+    router.post('/upload/:roomId', this.upload.array('files', 10), (req, res) => {
       try {
         const { roomId } = req.params;
         const { password } = req.body;
@@ -198,7 +173,7 @@ class FTPServer {
     });
 
     // List files in FTP room
-    this.app.post('/api/ftp/files/:roomId', (req, res) => {
+    router.post('/files/:roomId', (req, res) => {
       try {
         const { roomId } = req.params;
         const { password } = req.body;
@@ -248,7 +223,7 @@ class FTPServer {
     });
 
     // Download file from FTP room
-    this.app.post('/api/ftp/download/:roomId/:fileId', (req, res) => {
+    router.post('/download/:roomId/:fileId', (req, res) => {
       try {
         const { roomId, fileId } = req.params;
         const { password } = req.body;
@@ -301,7 +276,7 @@ class FTPServer {
     });
 
     // Delete file from FTP room
-    this.app.post('/api/ftp/delete/:roomId/:fileId', (req, res) => {
+    router.post('/delete/:roomId/:fileId', (req, res) => {
       try {
         const { roomId, fileId } = req.params;
         const { password } = req.body;
@@ -355,7 +330,7 @@ class FTPServer {
     });
 
     // Get FTP server status and room list
-    this.app.get('/api/ftp/status', (req, res) => {
+    router.get('/status', (req, res) => {
       try {
         const rooms = Array.from(this.activeRooms.values()).map(room => ({
           id: room.id,
@@ -382,15 +357,22 @@ class FTPServer {
       }
     });
 
+    app.use('/api/ftp', router);
+
     // Serve FTP interface (offline-compatible)
-    this.app.get('/ftp', (req, res) => {
+    app.get('/ftp', (req, res) => {
       res.send(this.generateFTPInterface());
     });
 
     // Serve FTP room interface
-    this.app.get('/ftp/:roomId', (req, res) => {
+    app.get('/ftp/:roomId', (req, res) => {
       res.send(this.generateFTPInterface(req.params.roomId));
     });
+
+    // Cleanup old rooms every hour
+    setInterval(() => {
+      this.cleanupOldRooms();
+    }, 60 * 60 * 1000);
   }
 
   generateRoomId() {
@@ -620,18 +602,18 @@ class FTPServer {
             <p>Offline File Transfer System - No Internet Required</p>
         </div>
 
-        ${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
+        \${roomId ? this.generateRoomInterface(roomId) : this.generateMainInterface()}
     </div>
 
     <script>
-        ${this.generateJavaScript(roomId)}
+        \${this.generateJavaScript(roomId)}
     </script>
 </body>
-</html>`;
+</html>\`;
   }
 
   generateMainInterface() {
-    return `
+    return \`
         <div class="card">
             <h2>Create New FTP Room</h2>
             <form id="createRoomForm">
@@ -663,13 +645,13 @@ class FTPServer {
         </div>
 
         <div id="statusMessage"></div>
-    `;
+    \`;
   }
 
   generateRoomInterface(roomId) {
-    return `
+    return \`
         <div class="card">
-            <h2>FTP Room: ${roomId}</h2>
+            <h2>FTP Room: \${roomId}</h2>
             <div id="roomInfo"></div>
             
             <div class="upload-area" id="uploadArea">
@@ -687,18 +669,18 @@ class FTPServer {
         </div>
 
         <div id="statusMessage"></div>
-    `;
+    \`;
   }
 
   generateJavaScript(roomId) {
-    return `
+    return \`
         const API_BASE = window.location.origin;
-        let currentRoomId = '${roomId || ''}';
+        let currentRoomId = '\${roomId || ''}';
         let currentPassword = '';
 
         function showStatus(message, type = 'success') {
             const statusDiv = document.getElementById('statusMessage');
-            statusDiv.innerHTML = \`<div class="status \${type}">\${message}</div>\`;
+            statusDiv.innerHTML = \\\`<div class="status \\\${type}">\\\${message}</div>\\\`;
             setTimeout(() => statusDiv.innerHTML = '', 5000);
         }
 
@@ -710,12 +692,12 @@ class FTPServer {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        ${roomId ? this.generateRoomJavaScript() : this.generateMainJavaScript()}
-    `;
+        \${roomId ? this.generateRoomJavaScript() : this.generateMainJavaScript()}
+    \`;
   }
 
   generateMainJavaScript() {
-    return `
+    return \`
         document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -723,7 +705,7 @@ class FTPServer {
             const password = document.getElementById('roomPassword').value;
             
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/create-room\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/create-room\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomName, password })
@@ -732,9 +714,9 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    showStatus(\`Room created successfully! Room ID: \${data.roomId}\`);
+                    showStatus(\\\`Room created successfully! Room ID: \\\${data.roomId}\\\`);
                     setTimeout(() => {
-                        window.location.href = \`\${API_BASE}/ftp/\${data.roomId}\`;
+                        window.location.href = \\\`\\\${API_BASE}/ftp/\\\${data.roomId}\\\`;
                     }, 2000);
                 } else {
                     showStatus(data.message, 'error');
@@ -756,7 +738,7 @@ class FTPServer {
             }
             
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${roomId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/join/\\\${roomId}\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
@@ -766,7 +748,7 @@ class FTPServer {
                 
                 if (data.success) {
                     showStatus('Joining room...');
-                    window.location.href = \`\${API_BASE}/ftp/\${roomId}\`;
+                    window.location.href = \\\`\\\${API_BASE}/ftp/\\\${roomId}\\\`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -779,11 +761,11 @@ class FTPServer {
         document.getElementById('joinRoomId').addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase();
         });
-    `;
+    \`;
   }
 
   generateRoomJavaScript() {
-    return `
+    return \`
         // Get password from user when page loads
         if (currentRoomId) {
             const password = prompt('Enter room password (leave blank if no password):') || '';
@@ -794,7 +776,7 @@ class FTPServer {
 
         async function loadRoomInfo() {
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/join/\${currentRoomId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/join/\\\${currentRoomId}\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -803,11 +785,11 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('roomInfo').innerHTML = \`
-                        <p><strong>Room:</strong> \${data.room.name}</p>
-                        <p><strong>Files:</strong> \${data.room.fileCount}</p>
-                        <p><strong>Created:</strong> \${new Date(data.room.createdAt).toLocaleString()}</p>
-                    \`;
+                    document.getElementById('roomInfo').innerHTML = \\\`
+                        <p><strong>Room:</strong> \\\${data.room.name}</p>
+                        <p><strong>Files:</strong> \\\${data.room.fileCount}</p>
+                        <p><strong>Created:</strong> \\\${new Date(data.room.createdAt).toLocaleString()}</p>
+                    \\\`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -818,7 +800,7 @@ class FTPServer {
 
         async function loadFiles() {
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/files/\${currentRoomId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/files/\\\${currentRoomId}\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -834,26 +816,26 @@ class FTPServer {
                         return;
                     }
                     
-                    filesDiv.innerHTML = \`
+                    filesDiv.innerHTML = \\\`
                         <div class="file-grid">
-                            \${data.files.map(file => \`
+                            \\\${data.files.map(file => \\\`
                                 <div class="file-card">
                                     <div class="file-info">
-                                        <h3>\${file.name}</h3>
+                                        <h3>\\\${file.name}</h3>
                                         <div class="file-meta">
-                                            <p>Size: \${formatFileSize(file.size)}</p>
-                                            <p>Type: \${file.type}</p>
-                                            <p>Uploaded: \${new Date(file.uploadedAt).toLocaleString()}</p>
+                                            <p>Size: \\\${formatFileSize(file.size)}</p>
+                                            <p>Type: \\\${file.type}</p>
+                                            <p>Uploaded: \\\${new Date(file.uploadedAt).toLocaleString()}</p>
                                         </div>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="btn" onclick="downloadFile('\${file.id}', '\${file.name}')">📥 Download</button>
-                                        <button class="btn btn-danger" onclick="deleteFile('\${file.id}', '\${file.name}')">🗑️ Delete</button>
+                                        <button class="btn" onclick="downloadFile('\\\${file.id}', '\\\${file.name}')">📥 Download</button>
+                                        <button class="btn btn-danger" onclick="deleteFile('\\\${file.id}', '\\\${file.name}')">🗑️ Delete</button>
                                     </div>
                                 </div>
-                            \`).join('')}
+                            \\\`).join('')}
                         </div>
-                    \`;
+                    \\\`;
                 } else {
                     showStatus(data.message, 'error');
                 }
@@ -869,7 +851,7 @@ class FTPServer {
 
         async function downloadFile(fileId, fileName) {
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/download/\${currentRoomId}/\${fileId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/download/\\\${currentRoomId}/\\\${fileId}\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -883,7 +865,7 @@ class FTPServer {
                     a.download = fileName;
                     a.click();
                     window.URL.revokeObjectURL(url);
-                    showStatus(\`Downloading \${fileName}\`);
+                    showStatus(\\\`Downloading \\\${fileName}\\\`);
                 } else {
                     const data = await response.json();
                     showStatus(data.message, 'error');
@@ -894,12 +876,12 @@ class FTPServer {
         }
 
         async function deleteFile(fileId, fileName) {
-            if (!confirm(\`Are you sure you want to delete "\${fileName}"?\`)) {
+            if (!confirm(\\\`Are you sure you want to delete "\\\${fileName}"?\\\`)) {
                 return;
             }
             
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/delete/\${currentRoomId}/\${fileId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/delete/\\\${currentRoomId}/\\\${fileId}\\\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: currentPassword })
@@ -908,7 +890,7 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    showStatus(\`File "\${fileName}" deleted successfully\`);
+                    showStatus(\\\`File "\\\${fileName}" deleted successfully\\\`);
                     loadFiles();
                 } else {
                     showStatus(data.message, 'error');
@@ -956,7 +938,7 @@ class FTPServer {
             formData.append('password', currentPassword);
             
             try {
-                const response = await fetch(\`\${API_BASE}/api/ftp/upload/\${currentRoomId}\`, {
+                const response = await fetch(\\\`\\\${API_BASE}/api/ftp/upload/\\\${currentRoomId}\\\`, {
                     method: 'POST',
                     body: formData
                 });
@@ -964,37 +946,20 @@ class FTPServer {
                 const data = await response.json();
                 
                 if (data.success) {
-                    statusDiv.innerHTML = \`<div class="status success">\${data.message}</div>\`;
+                    statusDiv.innerHTML = \\\`<div class="status success">\\\${data.message}</div>\\\`;
                     loadFiles();
                     loadRoomInfo();
                     fileInput.value = '';
                 } else {
-                    statusDiv.innerHTML = \`<div class="status error">\${data.message}</div>\`;
+                    statusDiv.innerHTML = \\\`<div class="status error">\\\${data.message}</div>\\\`;
                 }
             } catch (error) {
-                statusDiv.innerHTML = \`<div class="status error">Upload failed: \${error.message}</div>\`;
+                statusDiv.innerHTML = \\\`<div class="status error">Upload failed: \\\${error.message}</div>\\\`;
             }
             
             setTimeout(() => statusDiv.innerHTML = '', 5000);
         }
-    `;
-  }
-
-  start(port = 3003) {
-    this.server = this.app.listen(port, '0.0.0.0', () => {
-      console.log(`📁 FTP Server running on http://0.0.0.0:${port}`);
-      console.log(`📁 FTP Interface available at:`);
-      console.log(`  - Local: http://localhost:${port}/ftp`);
-      console.log(`  - Network: http://192.168.200.1:${port}/ftp`);
-      console.log(`📁 FTP Server ready for offline file sharing`);
-    });
-
-    // Cleanup old rooms every hour
-    setInterval(() => {
-      this.cleanupOldRooms();
-    }, 60 * 60 * 1000);
-
-    return this.server;
+    \`;
   }
 
   cleanupOldRooms() {
@@ -1003,23 +968,19 @@ class FTPServer {
 
     for (const [roomId, room] of this.activeRooms.entries()) {
       if (now - room.lastAccess > maxAge) {
-        // Delete room files
         const roomDir = path.join(this.uploadDir, roomId);
         if (fs.existsSync(roomDir)) {
           fs.rmSync(roomDir, { recursive: true, force: true });
         }
         
         this.activeRooms.delete(roomId);
-        console.log(`🧹 Cleaned up old FTP room: ${roomId}`);
+        console.log(`🧹 Cleaned up old FTP room: \${roomId}`);
       }
     }
   }
 
   stop() {
-    if (this.server) {
-      this.server.close();
-      console.log('📁 FTP Server stopped');
-    }
+    console.log('📁 FTP Server handlers stopped');
   }
 }
 

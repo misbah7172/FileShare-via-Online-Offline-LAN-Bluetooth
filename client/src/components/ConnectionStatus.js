@@ -1,7 +1,7 @@
 import React from 'react';
-import { Zap, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { Zap, AlertCircle, CheckCircle, Loader, RefreshCw } from 'lucide-react';
 
-const ConnectionStatus = ({ status, connectedPeers, totalPeers }) => {
+const ConnectionStatus = ({ status, connectedPeers, totalPeers, peerStates = {}, peerIceStates = {}, onRestartAll }) => {
   const getStatusInfo = () => {
     switch (status) {
       case 'connected':
@@ -20,11 +20,26 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers }) => {
             className: 'status-connected'
           };
         } else {
+          // Check if any peer is stuck in a specific state
+          const stuckPeers = Object.entries(peerIceStates).filter(([_, state]) => 
+            ['checking', 'disconnected', 'failed'].includes(state)
+          );
+          
+          let text = 'Connecting to peers...';
+          let subtext = `${connectedPeers} of ${totalPeers} users connected`;
+          let showTroubleshooting = totalPeers > 0 && connectedPeers < totalPeers;
+
+          if (stuckPeers.length > 0) {
+            text = 'Some connections are stuck';
+            subtext = `Stuck in state: ${stuckPeers[0][1]}. Try restarting or check firewall.`;
+          }
+
           return {
             icon: <Loader size={18} className="status-icon status-connecting spin" />,
-            text: 'Connecting to peers...',
-            subtext: `${connectedPeers} of ${totalPeers} users connected`,
-            className: 'status-connecting'
+            text,
+            subtext,
+            className: 'status-connecting',
+            showTroubleshooting
           };
         }
       case 'connecting':
@@ -61,6 +76,24 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers }) => {
           <span className="status-text">{statusInfo.text}</span>
         </div>
         <p className="status-subtext">{statusInfo.subtext}</p>
+        
+        {statusInfo.showTroubleshooting && (
+          <div className="troubleshooting">
+            <p className="trouble-hint">Stuck? Check these:</p>
+            <ul>
+              <li>Both devices must be on the same WiFi</li>
+              <li>Disable "AP Isolation" on your router</li>
+              <li>Allow browser through Windows Firewall</li>
+              <li>Try using Chrome or Edge</li>
+            </ul>
+            {onRestartAll && (
+              <button className="btn btn-xs btn-secondary mt-2" onClick={onRestartAll}>
+                <RefreshCw size={12} className="mr-1" />
+                Retry Connections
+              </button>
+            )}
+          </div>
+        )}
       </div>
       
       <style jsx>{`
@@ -73,6 +106,38 @@ const ConnectionStatus = ({ status, connectedPeers, totalPeers }) => {
           transition: all 0.3s ease-in-out;
         }
         
+        .troubleshooting {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .trouble-hint {
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: #ffc107;
+          margin-bottom: 0.5rem;
+        }
+        
+        .troubleshooting ul {
+          margin: 0;
+          padding-left: 1.25rem;
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .troubleshooting li {
+          margin-bottom: 0.25rem;
+        }
+
+        .btn-xs {
+          padding: 0.2rem 0.5rem;
+          font-size: 0.7rem;
+        }
+
+        .mr-1 { margin-right: 0.25rem; }
+        .mt-2 { margin-top: 0.5rem; }
+
         .connection-status.status-connected {
           background: rgba(40, 167, 69, 0.15);
           border-color: rgba(40, 167, 69, 0.3);

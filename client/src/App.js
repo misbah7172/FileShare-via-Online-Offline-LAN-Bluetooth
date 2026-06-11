@@ -87,6 +87,8 @@ function App() {
             onRoomCreated={handleRoomCreated}
             onRoomJoined={handleRoomJoined}
             initialRoomData={roomData}
+            onLANMode={toggleLANMode}
+            onFTPMode={toggleFTPMode}
           />
         )}
         {currentView === 'lan' && isLANMode && (

@@ -44,6 +44,8 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
   const [sharedFiles, setSharedFiles] = useState([]); // Centralized shared files list
   const [sharedMessages, setSharedMessages] = useState([]); // Shared text messages
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [peerStates, setPeerStates] = useState({}); // userId -> connectionState
+  const [peerIceStates, setPeerIceStates] = useState({}); // userId -> iceConnectionState
   const [error, setError] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState('');
@@ -124,6 +126,13 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, roomData]);
 
+  const handleRestartConnection = (userId) => {
+    if (webrtcRef.current) {
+      console.log('🔄 Manually restarting connection to peer:', userId);
+      webrtcRef.current.restartConnection(userId);
+    }
+  };
+
   // Create a deduplicated list of transfers for display
   const displayTransfers = React.useMemo(() => {
     // Since we're now only using sharedFiles, just return sharedFiles
@@ -182,6 +191,24 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
         newSet.delete(userId);
         return newSet;
       });
+      setPeerStates(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
+      setPeerIceStates(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
+    };
+
+    webrtc.onPeerStateChange = (userId, state) => {
+      setPeerStates(prev => ({ ...prev, [userId]: state }));
+    };
+
+    webrtc.onPeerIceStateChange = (userId, state) => {
+      setPeerIceStates(prev => ({ ...prev, [userId]: state }));
     };
 
     webrtc.onPeerError = (userId, error) => {
@@ -609,6 +636,16 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
   const connectedCount = connectedPeers.size;
   const totalUsers = users.length;
 
+  const handleRestartAll = () => {
+    if (webrtcRef.current) {
+      console.log('🔄 Restarting all peer connections');
+      const otherUsers = users.filter(user => !user.isCurrentUser);
+      otherUsers.forEach(user => {
+        webrtcRef.current.restartConnection(user.userId);
+      });
+    }
+  };
+
   return (
     <div className="room">
       <div className="room-header">
@@ -674,6 +711,9 @@ const Room = ({ socket, roomData, onLeaveRoom }) => {
             status={connectionStatus}
             connectedPeers={connectedCount}
             totalPeers={totalUsers - 1}
+            peerStates={peerStates}
+            peerIceStates={peerIceStates}
+            onRestartAll={handleRestartAll}
           />
           
           <UserList 

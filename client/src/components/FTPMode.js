@@ -32,13 +32,17 @@ const FTPMode = () => {
   const [joinRoomId, setJoinRoomId] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
 
-  // Determine API base URL - use network IP if available, fallback to localhost
+  // Determine API base URL - use current origin if in production/Render
   const getAPIBase = () => {
     const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3003';
+    if (process.env.NODE_ENV === 'production' || hostname.includes('render.com')) {
+      return window.location.origin;
     }
-    return `http://${hostname}:3003`;
+    // In dev, use the main server port (integrated)
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:3001';
+    }
+    return `http://${hostname}:3001`;
   };
   
   const API_BASE = process.env.REACT_APP_FTP_SERVER_URL || getAPIBase();
